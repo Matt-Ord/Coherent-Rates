@@ -1,0 +1,3 @@
+[submodule "lib/surface_potential_analysis"]
+	path = lib/surface_potential_analysis
+	url = git@github.com:Matt-Ord/surface_potential_analysis.git
