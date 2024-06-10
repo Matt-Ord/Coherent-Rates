@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 from matplotlib import pyplot as plt
 from surface_potential_analysis.basis.explicit_basis import (
@@ -27,6 +29,9 @@ from coherent_rates.system import (
     get_hamiltonian,
     solve_schrodinger_equation,
 )
+
+if TYPE_CHECKING:
+    from surface_potential_analysis.state_vector.state_vector import StateVector
 
 
 def plot_system_eigenstates(
@@ -71,7 +76,7 @@ def plot_system_evolution(
     fig, ax, _ = plot_potential_1d_x(potential)
 
     times = EvenlySpacedTimeBasis(100, 1, 0, 1e-14)
-    initial_state = {
+    initial_state: StateVector[Any] = {
         "basis": stacked_basis_as_fundamental_position_basis(potential["basis"]),
         "data": np.zeros(100, dtype=np.complex128),
     }
