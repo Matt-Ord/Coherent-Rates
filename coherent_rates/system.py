@@ -17,8 +17,8 @@ from surface_potential_analysis.basis.evenly_spaced_basis import (
     EvenlySpacedTransformedPositionBasis,
 )
 from surface_potential_analysis.basis.stacked_basis import (
-    StackedBasis,
     StackedBasisLike,
+    TupleBasis,
 )
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.dynamics.schrodinger.solve import (
@@ -26,6 +26,10 @@ from surface_potential_analysis.dynamics.schrodinger.solve import (
 )
 from surface_potential_analysis.hamiltonian_builder.momentum_basis import (
     total_surface_hamiltonian,
+)
+from surface_potential_analysis.operator.operator import (
+    apply_operator_to_state,
+    apply_operator_to_states,
 )
 from surface_potential_analysis.potential.conversion import convert_potential_to_basis
 from surface_potential_analysis.stacked_basis.build import (
@@ -37,6 +41,10 @@ from surface_potential_analysis.stacked_basis.conversion import (
 )
 from surface_potential_analysis.state_vector.conversion import (
     convert_state_vector_to_basis,
+)
+from surface_potential_analysis.state_vector.plot import get_periodic_x_operator_general
+from surface_potential_analysis.state_vector.state_vector_list import (
+    calculate_inner_products_elementwise,
 )
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     get_full_bloch_hamiltonian,
@@ -55,6 +63,7 @@ if TYPE_CHECKING:
         SingleBasisOperator,
     )
     from surface_potential_analysis.potential.potential import Potential
+    from surface_potential_analysis.state_vector.eigenstate_collection import ValueList
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import (
         StateVectorList,
@@ -108,11 +117,11 @@ LITHIUM_COPPER_SYSTEM = PeriodicSystem(
 
 def get_potential(
     system: PeriodicSystem,
-) -> Potential[StackedBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
+) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
     delta_x = np.sqrt(3) * system.lattice_constant / 2
     axis = FundamentalTransformedPositionBasis1d[Literal[3]](np.array([delta_x]), 3)
     vector = 0.25 * system.barrier_energy * np.array([2, -1, -1]) * np.sqrt(3)
-    return {"basis": StackedBasis(axis), "data": vector}
+    return {"basis": TupleBasis(axis), "data": vector}
 
 
 def get_interpolated_potential(
@@ -123,7 +132,7 @@ def get_interpolated_potential(
 ]:
     potential = get_potential(system)
     old = potential["basis"][0]
-    basis = StackedBasis(
+    basis = TupleBasis(
         TransformedPositionBasis1d[_L0Inv, Literal[3]](
             old.delta_x,
             old.n,
@@ -148,7 +157,7 @@ def get_extended_interpolated_potential(
 ]:
     interpolated = get_interpolated_potential(system, resolution)
     old = interpolated["basis"][0]
-    basis = StackedBasis(
+    basis = TupleBasis(
         EvenlySpacedTransformedPositionBasis[_L1Inv, _L0Inv, Literal[0], Literal[1]](
             old.delta_x * shape[0],
             n=old.n,
@@ -198,7 +207,7 @@ def _get_bloch_wavefunctions(
             bloch_fraction=bloch_fraction,
         )
 
-    StackedBasis(FundamentalBasis)
+    TupleBasis(FundamentalBasis)
     return generate_wavepacket(
         hamiltonian_generator,
         save_bands=EvenlySpacedBasis(config.n_bands, 1, 0),
@@ -231,3 +240,33 @@ def solve_schrodinger_equation(
     )
 
     return solve_schrodinger_equation_diagonal(converted_initial, times, hamiltonian)
+
+
+def get_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    initial_state: StateVector[Any],
+    times: _AX0Inv,
+    direction: tuple[int] = (1,),
+) -> ValueList[_AX0Inv]:
+    operator = get_periodic_x_operator_general(
+        initial_state["basis"],
+        direction=direction,
+    )
+
+    state_evolved = solve_schrodinger_equation(system, config, initial_state, times)
+
+    state_evolved_scattered = apply_operator_to_states(operator, state_evolved)
+
+    state_scattered = apply_operator_to_state(operator, initial_state)
+
+    state_scattered_evolved = solve_schrodinger_equation(
+        system,
+        config,
+        state_scattered,
+        times,
+    )
+    return calculate_inner_products_elementwise(
+        state_scattered_evolved,
+        state_evolved_scattered,
+    )
