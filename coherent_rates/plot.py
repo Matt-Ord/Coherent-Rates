@@ -1,9 +1,6 @@
 from typing import Any, TypeVar
 
 from matplotlib import pyplot as plt
-from surface_potential_analysis.basis.explicit_basis import (
-    explicit_stacked_basis_as_fundamental,
-)
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.operator.operator import (
     apply_operator_to_state,
@@ -48,7 +45,6 @@ def plot_system_eigenstates(
 
     hamiltonian = get_hamiltonian(system, config)
     eigenvectors = hamiltonian["basis"][0].vectors
-    basis = explicit_stacked_basis_as_fundamental(hamiltonian["basis"][0])
     converted = convert_state_vector_list_to_basis(eigenvectors, basis)
 
     ax1 = ax.twinx()
@@ -74,10 +70,7 @@ def plot_system_evolution(
 ) -> None:
     states = solve_schrodinger_equation(system, config, initial_state, times)
 
-    basis = explicit_stacked_basis_as_fundamental(states["basis"][1])
-    converted = convert_state_vector_list_to_basis(states, basis)
-
-    fig, ax, _anim = animate_state_over_list_1d_x(converted)
+    fig, ax, _anim = animate_state_over_list_1d_x(states)
 
     fig.show()
     input()
@@ -105,20 +98,15 @@ def plot_pair_system_evolution(
     )
 
     fig, ax = plt.subplots()
-    basis = explicit_stacked_basis_as_fundamental(state_scattered_evolved["basis"][1])
-    converted2 = convert_state_vector_list_to_basis(state_scattered_evolved, basis)
 
     fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax)
-    fig, ax, _anim2 = animate_state_over_list_1d_x(converted2, ax=ax)
+    fig, ax, _anim2 = animate_state_over_list_1d_x(state_scattered_evolved, ax=ax)
 
     fig.show()
 
     fig, ax = plt.subplots()
-    basis = explicit_stacked_basis_as_fundamental(state_scattered_evolved["basis"][1])
-    converted2 = convert_state_vector_list_to_basis(state_scattered_evolved, basis)
-
     fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
-    fig, ax, _anim4 = animate_state_over_list_1d_k(converted2, ax=ax)
+    fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
 
     fig.show()
     input()
