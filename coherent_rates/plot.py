@@ -1,4 +1,6 @@
-from typing import Any, TypeVar
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from matplotlib import pyplot as plt
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
@@ -7,17 +9,12 @@ from surface_potential_analysis.operator.operator import (
     apply_operator_to_states,
 )
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
-from surface_potential_analysis.state_vector.conversion import (
-    convert_state_vector_list_to_basis,
-)
 from surface_potential_analysis.state_vector.plot import (
-    animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
-    get_periodic_x_operator_general,
+    get_periodic_x_operator,
     plot_state_1d_k,
     plot_state_1d_x,
 )
-from surface_potential_analysis.state_vector.state_vector import StateVector
 from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
@@ -29,6 +26,9 @@ from coherent_rates.system import (
     get_hamiltonian,
     solve_schrodinger_equation,
 )
+
+if TYPE_CHECKING:
+    from surface_potential_analysis.state_vector.state_vector import StateVector
 
 
 def plot_system_eigenstates(
@@ -45,11 +45,10 @@ def plot_system_eigenstates(
 
     hamiltonian = get_hamiltonian(system, config)
     eigenvectors = hamiltonian["basis"][0].vectors
-    converted = convert_state_vector_list_to_basis(eigenvectors, basis)
 
     ax1 = ax.twinx()
     fig2, ax2 = plt.subplots()
-    for _i, state in enumerate(state_vector_list_into_iter(converted)):
+    for _i, state in enumerate(state_vector_list_into_iter(eigenvectors)):
         plot_state_1d_x(state, ax=ax1)
 
         plot_state_1d_k(state, ax=ax2)
@@ -81,8 +80,9 @@ def plot_pair_system_evolution(
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,
+    direction: tuple[int] = (1,),
 ) -> None:
-    operator = get_periodic_x_operator_general(initial_state["basis"], direction=(10,))
+    operator = get_periodic_x_operator(initial_state["basis"], direction)
 
     state_evolved = solve_schrodinger_equation(system, config, initial_state, times)
 
@@ -104,9 +104,9 @@ def plot_pair_system_evolution(
 
     fig.show()
 
-    fig, ax = plt.subplots()
-    fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
-    fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
+    # fig, ax = plt.subplots()
+    # fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
+    # fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
 
-    fig.show()
+    # fig.show()
     input()
