@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
-from scipy.constants import electron_volt
+from scipy.constants import electron_volt, k
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -19,6 +19,7 @@ from surface_potential_analysis.basis.evenly_spaced_basis import (
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisLike,
     TupleBasis,
+    TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.dynamics.schrodinger.solve import (
@@ -42,7 +43,9 @@ from surface_potential_analysis.stacked_basis.conversion import (
 from surface_potential_analysis.state_vector.conversion import (
     convert_state_vector_to_basis,
 )
-from surface_potential_analysis.state_vector.plot import get_periodic_x_operator_general
+from surface_potential_analysis.state_vector.plot import (
+    get_periodic_x_operator,
+)
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
@@ -151,7 +154,7 @@ def get_extended_interpolated_potential(
     shape: tuple[_L0Inv],
     resolution: tuple[_L1Inv],
 ) -> Potential[
-    StackedBasisLike[
+    TupleBasisWithLengthLike[
         EvenlySpacedTransformedPositionBasis[_L1Inv, _L0Inv, Literal[0], Literal[1]]
     ]
 ]:
@@ -249,7 +252,7 @@ def get_isf(
     times: _AX0Inv,
     direction: tuple[int] = (1,),
 ) -> ValueList[_AX0Inv]:
-    operator = get_periodic_x_operator_general(
+    operator = get_periodic_x_operator(
         initial_state["basis"],
         direction=direction,
     )
@@ -270,3 +273,116 @@ def get_isf(
         state_scattered_evolved,
         state_evolved_scattered,
     )
+
+
+def get_isf_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[Any],
+    operator: SingleBasisOperator[Any],
+    initial_state: StateVector[Any],
+    times: _AX0Inv,
+) -> ValueList[_AX0Inv]:
+    converted_initial = convert_state_vector_to_basis(
+        initial_state,
+        hamiltonian["basis"][0],
+    )
+
+    state_evolved = solve_schrodinger_equation_diagonal(
+        converted_initial,
+        times,
+        hamiltonian,
+    )
+
+    state_evolved_scattered = apply_operator_to_states(operator, state_evolved)
+
+    state_scattered = apply_operator_to_state(operator, initial_state)
+
+    converted_scattered = convert_state_vector_to_basis(
+        state_scattered,
+        hamiltonian["basis"][0],
+    )
+
+    state_scattered_evolved = solve_schrodinger_equation_diagonal(
+        converted_scattered,
+        times,
+        hamiltonian,
+    )
+
+    return calculate_inner_products_elementwise(
+        state_scattered_evolved,
+        state_evolved_scattered,
+    )
+
+
+def get_random_boltzmann_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    temperature: float,
+) -> StateVector[Any]:
+    """Generate a random Boltzmann state.
+
+    Follows the formula described in eqn 5 in
+    https://doi.org/10.48550/arXiv.2002.12035.
+
+
+    Args:
+    ----
+        system (PeriodicSystem): system
+        config (PeriodicSystemConfig): config
+        temperature (float): temperature of the system
+
+    Returns:
+    -------
+        StateVector[Any]: state with boltzmann distribution
+
+    """
+    hamiltonian = get_hamiltonian(system, config)
+    boltzmann_distribution = np.exp(
+        -hamiltonian["data"] / (2 * k * temperature),
+    )
+
+    random_phase = np.exp(2j * np.pi * np.random.rand(len(hamiltonian["data"])))
+    normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
+    boltzmann_state = boltzmann_distribution * random_phase / normalization
+    return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
+
+
+def get_boltzmann_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    temperature: float,
+    phase: float,
+) -> StateVector[Any]:
+    hamiltonian = get_hamiltonian(system, config)
+    boltzmann_distribution = np.exp(
+        -hamiltonian["data"] / (2 * k * temperature),
+    )
+
+    normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
+    boltzmann_state = boltzmann_distribution * np.exp(1j * phase) / normalization
+    return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
+
+
+def get_average_boltzmann_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _AX0Inv,
+    direction: tuple[int] = (1,),
+    temperature: float = 300,
+    n: int = 10,
+) -> ValueList[_AX0Inv]:
+    isf_data = np.zeros(times.n, dtype=np.complex128)
+    hamiltonian = get_hamiltonian(system, config)
+    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
+
+    for _i in range(n):
+        isf_data += get_isf_from_hamiltonian(
+            hamiltonian,
+            operator,
+            get_random_boltzmann_state(system, config, temperature),
+            times,
+        )["data"]
+    isf_data = isf_data / n
+    return {
+        "data": isf_data,
+        "basis": times,
+    }

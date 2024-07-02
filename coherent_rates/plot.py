@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
-import numpy as np
 from matplotlib import pyplot as plt
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.operator.operator import (
@@ -11,6 +10,7 @@ from surface_potential_analysis.operator.operator import (
 )
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
 from surface_potential_analysis.state_vector.plot import (
+    animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
     get_periodic_x_operator,
     plot_state_1d_k,
@@ -97,7 +97,7 @@ def plot_pair_system_evolution(
         state_scattered,
         times,
     )
-    
+
     fig, ax = plt.subplots()
 
     fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax)
@@ -105,9 +105,9 @@ def plot_pair_system_evolution(
 
     fig.show()
 
-    # fig, ax = plt.subplots()
-    # fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
-    # fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
+    fig, ax = plt.subplots()
+    fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
+    fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
 
-    # fig.show()
+    fig.show()
     input()
