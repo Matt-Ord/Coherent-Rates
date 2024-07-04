@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from matplotlib import pyplot as plt
-from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.operator.operator import (
     apply_operator_to_state,
     apply_operator_to_states,
@@ -29,6 +27,10 @@ from coherent_rates.system import (
 )
 
 if TYPE_CHECKING:
+    from surface_potential_analysis.basis.stacked_basis import (
+        StackedBasisWithVolumeLike,
+    )
+    from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
     from surface_potential_analysis.state_vector.state_vector import StateVector
 
 
@@ -59,18 +61,15 @@ def plot_system_eigenstates(
     input()
 
 
-_AX0Inv = TypeVar("_AX0Inv", bound=EvenlySpacedTimeBasis[Any, Any, Any])
-
-
 def plot_system_evolution(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
-    times: _AX0Inv,
+    times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
     states = solve_schrodinger_equation(system, config, initial_state, times)
 
-    fig, ax, _anim = animate_state_over_list_1d_x(states)
+    fig, _ax, _anim = animate_state_over_list_1d_x(states)
 
     fig.show()
     input()
@@ -79,8 +78,8 @@ def plot_system_evolution(
 def plot_pair_system_evolution(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[Any],
-    times: _AX0Inv,
+    initial_state: StateVector[StackedBasisWithVolumeLike[Any, Any, Any]],
+    times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
 ) -> None:
     operator = get_periodic_x_operator(initial_state["basis"], direction)
@@ -97,7 +96,7 @@ def plot_pair_system_evolution(
         state_scattered,
         times,
     )
-    
+
     fig, ax = plt.subplots()
 
     fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax)
