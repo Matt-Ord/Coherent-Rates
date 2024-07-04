@@ -1,13 +1,18 @@
+import numpy as np
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+from surface_potential_analysis.operator.conversion import convert_operator_to_basis
+from surface_potential_analysis.util.plot import plot_data_2d
 
 from coherent_rates.system import (
     HYDROGEN_NICKEL_SYSTEM,
     PeriodicSystemConfig,
+    get_cl_operator,
     get_extended_interpolated_potential,
+    get_hamiltonian,
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((2,), (6,), 6)
+    config = PeriodicSystemConfig((5,), (7,), 3)
     system = HYDROGEN_NICKEL_SYSTEM
     potential = get_extended_interpolated_potential(
         system,
@@ -15,19 +20,16 @@ if __name__ == "__main__":
         config.resolution,
     )
     times = EvenlySpacedTimeBasis(100, 1, 0, 1e-13)
-    # hamiltonian = get_hamiltonian(system, config)
-    # oper = get_cl_test(system, config, 300)
-    # data = np.log(get_measured_data(oper["data"], "real"))
-    # # plt.imshow(data, interpolation="none")
-    # # plt.show()
+    hamiltonian = get_hamiltonian(system, config)
 
-    # opercon = convert_operator_to_basis(oper, hamiltonian["basis"])
-    # eigmax = opercon["data"].reshape(
-    #     (int(np.sqrt(len(opercon["data"]))), int(np.sqrt(len(opercon["data"])))),
-    # )
-
-    # eigval, eigvec = np.linalg.eig(eigmax)
-    # eigval = eigval / sum(eigval)
-    # print(eigval)
-    # print(get_cl_stationary_states_1d(system, config, 300)["eigenvalue"])
-    get_aver
+    operator = get_cl_operator(system, config, 155)
+    fig, ax, line = plot_data_2d(operator["data"])
+    fig.show()
+    operator_converted = convert_operator_to_basis(operator, hamiltonian["basis"])
+    eigmax = operator_converted["data"].reshape(
+        (hamiltonian["basis"].shape),
+    )
+    eigval, eigvec = np.linalg.eig(eigmax)
+    eigval = eigval / sum(eigval)
+    print(eigval)
+    input()
