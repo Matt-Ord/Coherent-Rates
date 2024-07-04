@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
-from scipy.constants import electron_volt, k
+from scipy.constants import electron_volt, hbar, k
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -32,7 +32,10 @@ from surface_potential_analysis.operator.operator import (
     apply_operator_to_state,
     apply_operator_to_states,
 )
-from surface_potential_analysis.potential.conversion import convert_potential_to_basis
+from surface_potential_analysis.potential.conversion import (
+    convert_potential_to_basis,
+    convert_potential_to_position_basis,
+)
 from surface_potential_analysis.stacked_basis.build import (
     fundamental_stacked_basis_from_shape,
 )
@@ -46,8 +49,10 @@ from surface_potential_analysis.state_vector.conversion import (
 from surface_potential_analysis.state_vector.plot import (
     get_periodic_x_operator,
 )
+from surface_potential_analysis.state_vector.state_vector import calculate_normalization
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
+    get_state_vector,
 )
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     get_full_bloch_hamiltonian,
@@ -66,7 +71,10 @@ if TYPE_CHECKING:
         SingleBasisOperator,
     )
     from surface_potential_analysis.potential.potential import Potential
-    from surface_potential_analysis.state_vector.eigenstate_collection import ValueList
+    from surface_potential_analysis.state_vector.eigenstate_collection import (
+        EigenstateList,
+        ValueList,
+    )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import (
         StateVectorList,
@@ -237,12 +245,68 @@ def solve_schrodinger_equation(
     times: _AX0Inv,
 ) -> StateVectorList[_AX0Inv, ExplicitStackedBasisWithLength[Any, Any]]:
     hamiltonian = get_hamiltonian(system, config)
-    converted_initial = convert_state_vector_to_basis(
-        initial_state,
-        hamiltonian["basis"][0],
-    )
+    return solve_schrodinger_equation_diagonal(initial_state, times, hamiltonian)
 
-    return solve_schrodinger_equation_diagonal(converted_initial, times, hamiltonian)
+
+def get_step_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    fraction: float,
+    delta: bool = False,
+) -> StateVector[Any]:
+    potential = get_extended_interpolated_potential(
+        system,
+        config.shape,
+        config.resolution,
+    )
+    basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
+
+    initial_state = {
+        "basis": basis,
+        "data": np.zeros(basis.n, dtype=np.complex128),
+    }
+    n = 1 if delta else int(fraction * basis.n)
+    for i in range(n):
+        initial_state["data"][i] = 1
+
+    initial_state["data"] = initial_state["data"] / np.sqrt(
+        calculate_normalization(
+            initial_state,
+        ),
+    )
+    return initial_state
+
+
+def get_gaussian_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    fraction: float,
+) -> StateVector[Any]:
+    potential = get_extended_interpolated_potential(
+        system,
+        config.shape,
+        config.resolution,
+    )
+    basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
+
+    size = basis.n
+    width = size * fraction
+    data = np.zeros(basis.n, dtype=np.complex128)
+
+    for i in range(size):
+        data[i] = -np.square(i - size / 2) / (2 * width * width)
+
+    data = np.exp(data)
+    initial_state = {
+        "basis": basis,
+        "data": data,
+    }
+    initial_state["data"] = initial_state["data"] / np.sqrt(
+        calculate_normalization(
+            initial_state,
+        ),
+    )
+    return initial_state
 
 
 def get_isf(
@@ -281,13 +345,13 @@ def get_isf_from_hamiltonian(
     initial_state: StateVector[Any],
     times: _AX0Inv,
 ) -> ValueList[_AX0Inv]:
-    converted_initial = convert_state_vector_to_basis(
+    convert_state_vector_to_basis(
         initial_state,
         hamiltonian["basis"][0],
     )
 
     state_evolved = solve_schrodinger_equation_diagonal(
-        converted_initial,
+        initial_state,
         times,
         hamiltonian,
     )
@@ -385,4 +449,123 @@ def get_average_boltzmann_isf(
     return {
         "data": isf_data,
         "basis": times,
+    }
+
+
+def get_cl_stationary_states_1d(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    temperature: float,
+) -> EigenstateList[FundamentalBasis[int], Any]:
+    """Generate the eigenstates of the stationary Caldeira-Leggett solution.
+
+    Follows the formula from eqn 3.421 in
+    https://doi.org/10.1093/acprof:oso/9780199213900.001.0001
+
+    Args:
+    ----
+        system (PeriodicSystem): system
+        config (PeriodicSystemConfig): config
+        temperature (float): temperature of system
+
+    Returns:
+    -------
+        EigenstateList[FundamentalBasis[int], Any]: list of states and probabilities
+
+    """
+    potential = get_extended_interpolated_potential(
+        system,
+        config.shape,
+        config.resolution,
+    )
+
+    size_pos = stacked_basis_as_fundamental_position_basis(
+        potential["basis"],
+    ).n  # size of position basis
+    converted_potential = convert_potential_to_position_basis(potential)
+    x_spacing = (
+        system.lattice_constant * np.sqrt(3) / (2 * config.resolution[0])
+    )  # size of each x interval
+    hamiltonian = get_hamiltonian(system, config)
+    eigenvectors = hamiltonian["basis"][0].vectors
+    m = system.mass
+
+    data = converted_potential["data"]
+    matrix = np.zeros((size_pos, size_pos), dtype=np.complex128)
+    size_eig = config.n_bands * config.shape[0]  # size of eigenbasis of hamiltonian
+    matrix_eig = np.zeros((size_eig, size_eig), dtype=np.complex128)
+
+    for i in range(size_pos):
+        for j in range(i + 1):
+            matrix[i][j] = -(data[int((i + j) / 2)] + data[int((i + j + 1) / 2)]) / (
+                2 * k * temperature
+            ) - (m * k * temperature * np.square(x_spacing)) * np.square(i - j) / (
+                2 * np.square(hbar)
+            )
+            matrix[j][i] = matrix[i][j]
+    matrix_pos = np.exp(matrix)  # density matrix in position basis (unnormalized)
+    # print(matrix_pos)
+    for i in range(size_eig):
+        for j in range(size_eig):
+            state1 = get_state_vector(eigenvectors, i)
+            state2 = get_state_vector(eigenvectors, j)
+            matrix_eig[i][j] = np.einsum(
+                "a, ab, b ->",
+                np.conj(state1["data"]),
+                matrix_pos,
+                state2["data"],
+            )
+    # print(matrix_eig)
+    matrix_eig = matrix_eig / np.trace(
+        matrix_eig,
+    )  # density matrix in eigenbasis, normalized
+
+    eigenvalues, vectors = np.linalg.eig(matrix_eig)
+
+    return {
+        "basis": TupleBasis(
+            FundamentalBasis(eigenvalues.size),
+            hamiltonian["basis"][0],
+        ),
+        "data": np.transpose(vectors).reshape(-1),
+        "eigenvalue": eigenvalues,
+    }
+
+
+def get_cl_test(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    temperature: float,
+) -> SingleBasisOperator[Any]:
+    potential = get_extended_interpolated_potential(
+        system,
+        config.shape,
+        config.resolution,
+    )
+
+    size_pos = stacked_basis_as_fundamental_position_basis(
+        potential["basis"],
+    ).n  # size of position basis
+    converted_potential = convert_potential_to_position_basis(potential)
+    x_spacing = (
+        system.lattice_constant * np.sqrt(3) / (2 * config.resolution[0])
+    )  # size of each x interval
+    m = system.mass
+
+    converted_potential["data"]
+    matrix = np.zeros((size_pos, size_pos), dtype=np.complex128)
+
+    for i in range(size_pos):
+        for j in range(i + 1):
+            matrix[i][j] = (
+                -(m * k * temperature * np.square(x_spacing))
+                * np.square(i - j)
+                / (2 * np.square(hbar))
+            )
+            matrix[j][i] = matrix[i][j]
+    matrix_pos = np.exp(matrix)  # density matrix in position basis (unnormalized)
+
+    return {
+        "basis": TupleBasis(converted_potential["basis"], converted_potential["basis"]),
+        "data": matrix_pos,
     }

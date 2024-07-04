@@ -76,6 +76,28 @@ def plot_system_evolution(
     input()
 
 
+def plot_system_evolution_with_potential(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    initial_state: StateVector[Any],
+    times: _AX0Inv,
+) -> None:
+    potential = get_extended_interpolated_potential(
+        system,
+        config.shape,
+        config.resolution,
+    )
+    fig, ax, _ = plot_potential_1d_x(potential)
+    _.set_color("orange")
+    ax1 = ax.twinx()
+    states = solve_schrodinger_equation(system, config, initial_state, times)
+
+    fig, ax, _anim = animate_state_over_list_1d_x(states, ax=ax1)
+
+    fig.show()
+    input()
+
+
 def plot_pair_system_evolution(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
@@ -97,11 +119,18 @@ def plot_pair_system_evolution(
         state_scattered,
         times,
     )
+    potential = get_extended_interpolated_potential(
+        system,
+        config.shape,
+        config.resolution,
+    )
+    fig, ax, _ = plot_potential_1d_x(potential)
+    _.set_color("orange")
+    ax1 = ax.twinx()
+    # fig, ax = plt.subplots()
 
-    fig, ax = plt.subplots()
-
-    fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax)
-    fig, ax, _anim2 = animate_state_over_list_1d_x(state_scattered_evolved, ax=ax)
+    fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax1)
+    fig, ax, _anim2 = animate_state_over_list_1d_x(state_scattered_evolved, ax=ax1)
 
     fig.show()
 

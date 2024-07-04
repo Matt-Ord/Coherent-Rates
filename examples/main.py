@@ -1,10 +1,5 @@
-import numpy as np
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.stacked_basis.conversion import (
-    stacked_basis_as_fundamental_position_basis,
-)
 
-from coherent_rates.plot import plot_pair_system_evolution
 from coherent_rates.system import (
     HYDROGEN_NICKEL_SYSTEM,
     PeriodicSystemConfig,
@@ -12,20 +7,27 @@ from coherent_rates.system import (
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((5,), (100,), 50)
+    config = PeriodicSystemConfig((2,), (6,), 6)
     system = HYDROGEN_NICKEL_SYSTEM
     potential = get_extended_interpolated_potential(
         system,
         config.shape,
         config.resolution,
     )
+    times = EvenlySpacedTimeBasis(100, 1, 0, 1e-13)
+    # hamiltonian = get_hamiltonian(system, config)
+    # oper = get_cl_test(system, config, 300)
+    # data = np.log(get_measured_data(oper["data"], "real"))
+    # # plt.imshow(data, interpolation="none")
+    # # plt.show()
 
-    initial_state = {
-        "basis": stacked_basis_as_fundamental_position_basis(potential["basis"]),
-        "data": np.zeros(500, dtype=np.complex128),
-    }
-    for i in range(50):
-        initial_state["data"][i] = 1
+    # opercon = convert_operator_to_basis(oper, hamiltonian["basis"])
+    # eigmax = opercon["data"].reshape(
+    #     (int(np.sqrt(len(opercon["data"]))), int(np.sqrt(len(opercon["data"])))),
+    # )
 
-    times0 = EvenlySpacedTimeBasis(100, 1, 0, 5e-14)
-    plot_pair_system_evolution(system, config, initial_state, times0)
+    # eigval, eigvec = np.linalg.eig(eigmax)
+    # eigval = eigval / sum(eigval)
+    # print(eigval)
+    # print(get_cl_stationary_states_1d(system, config, 300)["eigenvalue"])
+    get_aver
