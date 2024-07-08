@@ -469,9 +469,13 @@ def get_cl_operator(
     displacements = get_displacements_x(basis_x)
     total_nx = get_total_nx(basis_x)
 
+    max_nx = basis_x[0].n
+    # if total_nx % n // 2 is an integer, just take V[i]
+    # Otherwise this averages V[i] and V[i+1]
     average_potential = (
-        converted_potential["data"][np.floor_divide(total_nx[0], 2)]
-        + converted_potential["data"][np.floor_divide(total_nx[0] + 1, 2)] / 2
+        converted_potential["data"][np.floor_divide((total_nx[0] % max_nx), 2)]
+        + converted_potential["data"][np.floor_divide(((total_nx[0] % max_nx) + 1), 2)]
+        / 2
     )
 
     # density matrix in position basis (un-normalized)
