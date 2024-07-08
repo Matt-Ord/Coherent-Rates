@@ -24,7 +24,7 @@ from surface_potential_analysis.basis.stacked_basis import (
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.basis.util import (
     get_displacements_x,
-    get_total_nx,
+    get_twice_average_nx,
 )
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
@@ -467,16 +467,17 @@ def get_cl_operator(
     converted_potential = convert_potential_to_position_basis(potential)
 
     displacements = get_displacements_x(basis_x)
-    total_nx = get_total_nx(basis_x)
+    average_nx = get_twice_average_nx(basis_x)
 
-    max_nx = basis_x[0].n
-    # if total_nx % n // 2 is an integer, just take V[i]
-    # Otherwise this averages V[i] and V[i+1]
+    n_states = basis_x.n
+
+    # if average_nx // 2 is an integer, this is just V[i]
+    # Otherwise this averages V[floor average_nx // 2] and V[ceil average_nx // 2]
+    floor_idx = np.floor(average_nx[0] / 2).astype(np.int_) % n_states
+    ceil_idx = np.ceil(average_nx[0] / 2).astype(np.int_) % n_states
     average_potential = (
-        converted_potential["data"][np.floor_divide((total_nx[0] % max_nx), 2)]
-        + converted_potential["data"][np.floor_divide(((total_nx[0] % max_nx) + 1), 2)]
-        / 2
-    )
+        converted_potential["data"][floor_idx] + converted_potential["data"][ceil_idx]
+    ) / 2
 
     # density matrix in position basis (un-normalized)
     # \rho_s(x, x') = N \exp(-V(x+x' / 2) / kt - mkt(x-x')^2/ 2hbar^2)
