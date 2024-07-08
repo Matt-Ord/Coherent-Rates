@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from matplotlib import pyplot as plt
+from surface_potential_analysis.operator.operations import apply_operator_to_states
 from surface_potential_analysis.operator.operator import (
     apply_operator_to_state,
-    apply_operator_to_states,
 )
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
 from surface_potential_analysis.state_vector.plot import (
@@ -15,6 +15,9 @@ from surface_potential_analysis.state_vector.plot import (
     plot_state_1d_k,
     plot_state_1d_x,
 )
+from surface_potential_analysis.state_vector.plot_value_list import (
+    plot_value_list_against_time,
+)
 from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
@@ -22,6 +25,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 from coherent_rates.system import (
     PeriodicSystem,
     PeriodicSystemConfig,
+    get_average_boltzmann_isf,
     get_extended_interpolated_potential,
     get_hamiltonian,
     solve_schrodinger_equation,
@@ -80,15 +84,15 @@ def plot_system_evolution_with_potential(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
-    times: _AX0Inv,
+    times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
     potential = get_extended_interpolated_potential(
         system,
         config.shape,
         config.resolution,
     )
-    fig, ax, _ = plot_potential_1d_x(potential)
-    _.set_color("orange")
+    fig, ax, line = plot_potential_1d_x(potential)
+    line.set_color("orange")
     ax1 = ax.twinx()
     states = solve_schrodinger_equation(system, config, initial_state, times)
 
@@ -137,5 +141,26 @@ def plot_pair_system_evolution(
     fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
     fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
 
+    fig.show()
+    input()
+
+
+def plot_boltzmann_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    temperature: float,
+    times: EvenlySpacedTimeBasis[Any, Any, Any],
+    direction: tuple[int] = (1,),
+    n_repeats: int = 10,
+) -> None:
+    data = get_average_boltzmann_isf(
+        system,
+        config,
+        times,
+        direction,
+        temperature,
+        n_repeats,
+    )
+    fig, ax, line = plot_value_list_against_time(data)
     fig.show()
     input()

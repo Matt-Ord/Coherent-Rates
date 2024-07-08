@@ -27,9 +27,9 @@ from surface_potential_analysis.dynamics.schrodinger.solve import (
 from surface_potential_analysis.hamiltonian_builder.momentum_basis import (
     total_surface_hamiltonian,
 )
+from surface_potential_analysis.operator.operations import apply_operator_to_states
 from surface_potential_analysis.operator.operator import (
     apply_operator_to_state,
-    apply_operator_to_states,
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_basis,
@@ -247,8 +247,7 @@ def solve_schrodinger_equation(
 def get_step_state(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    fraction: float,
-    delta: bool = False,
+    fraction: float | None,
 ) -> StateVector[Any]:
     potential = get_extended_interpolated_potential(
         system,
@@ -261,15 +260,9 @@ def get_step_state(
         "basis": basis,
         "data": np.zeros(basis.n, dtype=np.complex128),
     }
-    n = 1 if delta else int(fraction * basis.n)
-    for i in range(n):
-        initial_state["data"][i] = 1
-
-    initial_state["data"] = initial_state["data"] / np.sqrt(
-        calculate_normalization(
-            initial_state,
-        ),
-    )
+    n_non_zero = 1 if fraction is None else int(fraction * basis.n)
+    for i in range(n_non_zero):
+        initial_state["data"][i] = 1 / np.sqrt(n_non_zero)
     return initial_state
 
 
@@ -465,10 +458,8 @@ def get_cl_operator(
         config.resolution,
     )
 
-    size_pos = stacked_basis_as_fundamental_position_basis(
-        potential["basis"],
-    ).n  # size of position basis
     converted_potential = convert_potential_to_position_basis(potential)
+    size_pos = converted_potential["basis"].n  # size of position basis
     x_spacing = (
         system.lattice_constant * np.sqrt(3) / (2 * config.resolution[0])
     )  # size of each x interval
