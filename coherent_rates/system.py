@@ -291,7 +291,7 @@ def get_gaussian_state(
         data[i] = -np.square(i - size / 2) / (2 * width * width)
 
     data = np.exp(data)
-    initial_state = {
+    initial_state: StateVector[Any] = {
         "basis": basis,
         "data": data,
     }
@@ -388,7 +388,9 @@ def get_random_boltzmann_state(
         -hamiltonian["data"] / (2 * Boltzmann * temperature),
     )
 
-    random_phase = np.exp(2j * np.pi * np.random.rand(len(hamiltonian["data"])))
+    rng = np.random.default_rng()
+
+    random_phase = np.exp(2j * np.pi * rng.random(len(hamiltonian["data"])))
     normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
     boltzmann_state = boltzmann_distribution * random_phase / normalization
     return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}

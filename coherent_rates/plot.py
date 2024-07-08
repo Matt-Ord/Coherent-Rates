@@ -161,6 +161,6 @@ def plot_boltzmann_isf(
         temperature,
         n_repeats,
     )
-    fig, ax, line = plot_value_list_against_time(data)
+    fig, _, _ = plot_value_list_against_time(data)
     fig.show()
     input()
