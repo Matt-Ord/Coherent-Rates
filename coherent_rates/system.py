@@ -17,7 +17,6 @@ from surface_potential_analysis.basis.evenly_spaced_basis import (
     EvenlySpacedTransformedPositionBasis,
 )
 from surface_potential_analysis.basis.stacked_basis import (
-    StackedBasisLike,
     TupleBasis,
     TupleBasisWithLengthLike,
 )
@@ -134,7 +133,7 @@ def get_interpolated_potential(
     system: PeriodicSystem,
     resolution: tuple[_L0Inv],
 ) -> Potential[
-    StackedBasisLike[FundamentalTransformedPositionBasis[_L0Inv, Literal[1]]]
+    TupleBasisWithLengthLike[FundamentalTransformedPositionBasis[_L0Inv, Literal[1]]]
 ]:
     potential = get_potential(system)
     old = potential["basis"][0]
@@ -182,7 +181,9 @@ def _get_full_hamiltonian(
     resolution: tuple[_L0Inv],
     *,
     bloch_fraction: np.ndarray[tuple[Literal[1]], np.dtype[np.float64]] | None = None,
-) -> SingleBasisOperator[StackedBasisLike[FundamentalPositionBasis[int, Literal[1]]],]:
+) -> SingleBasisOperator[
+    TupleBasisWithLengthLike[FundamentalPositionBasis[int, Literal[1]]],
+]:
     bloch_fraction = np.array([0]) if bloch_fraction is None else bloch_fraction
 
     potential = get_extended_interpolated_potential(system, shape, resolution)
@@ -198,13 +199,13 @@ def _get_bloch_wavefunctions(
     config: PeriodicSystemConfig,
 ) -> BlochWavefunctionListWithEigenvaluesList[
     EvenlySpacedBasis[int, int, int],
-    StackedBasisLike[FundamentalBasis[int]],
-    StackedBasisLike[FundamentalPositionBasis[int, Literal[1]]],
+    TupleBasisLike[FundamentalBasis[int]],
+    TupleBasisWithLengthLike[FundamentalPositionBasis[int, Literal[1]]],
 ]:
     def hamiltonian_generator(
         bloch_fraction: np.ndarray[tuple[Literal[1]], np.dtype[np.float64]],
     ) -> SingleBasisOperator[
-        StackedBasisLike[FundamentalPositionBasis[int, Literal[1]]]
+        TupleBasisWithLengthLike[FundamentalPositionBasis[int, Literal[1]]]
     ]:
         return _get_full_hamiltonian(
             system,
