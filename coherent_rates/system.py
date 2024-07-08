@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
-from scipy.constants import electron_volt, hbar, k
+from scipy.constants import Boltzmann, electron_volt, hbar
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -18,9 +18,14 @@ from surface_potential_analysis.basis.evenly_spaced_basis import (
 )
 from surface_potential_analysis.basis.stacked_basis import (
     TupleBasis,
+    TupleBasisLike,
     TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+from surface_potential_analysis.basis.util import (
+    get_displacements_x,
+    get_total_nx,
+)
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -256,7 +261,7 @@ def get_step_state(
     )
     basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
 
-    initial_state = {
+    initial_state: StateVector[Any] = {
         "basis": basis,
         "data": np.zeros(basis.n, dtype=np.complex128),
     }
@@ -380,7 +385,7 @@ def get_random_boltzmann_state(
     """
     hamiltonian = get_hamiltonian(system, config)
     boltzmann_distribution = np.exp(
-        -hamiltonian["data"] / (2 * k * temperature),
+        -hamiltonian["data"] / (2 * Boltzmann * temperature),
     )
 
     random_phase = np.exp(2j * np.pi * np.random.rand(len(hamiltonian["data"])))
@@ -397,7 +402,7 @@ def get_boltzmann_state(
 ) -> StateVector[Any]:
     hamiltonian = get_hamiltonian(system, config)
     boltzmann_distribution = np.exp(
-        -hamiltonian["data"] / (2 * k * temperature),
+        -hamiltonian["data"] / (2 * Boltzmann * temperature),
     )
 
     normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
@@ -458,27 +463,27 @@ def get_cl_operator(
         config.resolution,
     )
 
+    basis_x = stacked_basis_as_fundamental_position_basis(potential["basis"])
     converted_potential = convert_potential_to_position_basis(potential)
-    size_pos = converted_potential["basis"].n  # size of position basis
-    x_spacing = (
-        system.lattice_constant * np.sqrt(3) / (2 * config.resolution[0])
-    )  # size of each x interval
-    m = system.mass
 
-    data = converted_potential["data"]
-    matrix = np.zeros((size_pos, size_pos), dtype=np.complex128)
+    displacements = get_displacements_x(basis_x)
+    total_nx = get_total_nx(basis_x)
 
-    for i in range(size_pos):
-        for j in range(i + 1):
-            matrix[i][j] = -(data[int((i + j) / 2)] + data[int((i + j + 1) / 2)]) / (
-                2 * k * temperature
-            ) - (m * k * temperature * np.square(x_spacing)) * np.square(
-                (i - j + (size_pos) // 2) % size_pos - size_pos // 2,
-            ) / (2 * np.square(hbar))
-            matrix[j][i] = matrix[i][j]
-    matrix_pos = np.exp(matrix)  # density matrix in position basis (unnormalized)
+    average_potential = (
+        converted_potential["data"][np.floor_divide(total_nx[0], 2)]
+        + converted_potential["data"][np.floor_divide(total_nx[0] + 1, 2)] / 2
+    )
+
+    # density matrix in position basis (un-normalized)
+    # \rho_s(x, x') = N \exp(-V(x+x' / 2) / kt - mkt(x-x')^2/ 2hbar^2)
+    matrix = np.exp(
+        -(
+            (average_potential / (Boltzmann * temperature))
+            + (system.mass * Boltzmann * temperature * displacements**2 / (2 * hbar**2))
+        ),
+    )
 
     return {
         "basis": TupleBasis(converted_potential["basis"], converted_potential["basis"]),
-        "data": matrix_pos,
+        "data": matrix.ravel(),
     }
