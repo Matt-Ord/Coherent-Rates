@@ -3,15 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from matplotlib import pyplot as plt
-from surface_potential_analysis.operator.operations import apply_operator_to_states
-from surface_potential_analysis.operator.operator import (
-    apply_operator_to_state,
-)
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
-    get_periodic_x_operator,
     plot_state_1d_k,
     plot_state_1d_x,
 )
@@ -22,10 +17,10 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
 
+from coherent_rates.isf import get_boltzmann_isf, get_isf_pair_states
 from coherent_rates.system import (
     PeriodicSystem,
     PeriodicSystemConfig,
-    get_average_boltzmann_isf,
     get_extended_interpolated_potential,
     get_hamiltonian,
     solve_schrodinger_equation,
@@ -72,9 +67,17 @@ def plot_system_evolution(
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
+    potential = get_extended_interpolated_potential(
+        system,
+        config.shape,
+        config.resolution,
+    )
+    fig, ax, line = plot_potential_1d_x(potential)
+    line.set_color("orange")
+    ax1 = ax.twinx()
     states = solve_schrodinger_equation(system, config, initial_state, times)
 
-    fig, _ax, _anim = animate_state_over_list_1d_x(states)
+    fig, ax, _anim = animate_state_over_list_1d_x(states, ax=ax1)
 
     fig.show()
     input()
@@ -109,20 +112,6 @@ def plot_pair_system_evolution(
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
 ) -> None:
-    operator = get_periodic_x_operator(initial_state["basis"], direction)
-
-    state_evolved = solve_schrodinger_equation(system, config, initial_state, times)
-
-    state_evolved_scattered = apply_operator_to_states(operator, state_evolved)
-
-    state_scattered = apply_operator_to_state(operator, initial_state)
-
-    state_scattered_evolved = solve_schrodinger_equation(
-        system,
-        config,
-        state_scattered,
-        times,
-    )
     potential = get_extended_interpolated_potential(
         system,
         config.shape,
@@ -131,6 +120,11 @@ def plot_pair_system_evolution(
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
+
+    (
+        state_evolved_scattered,
+        state_scattered_evolved,
+    ) = get_isf_pair_states(system, config, initial_state, times, direction)
 
     fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax1)
     fig, ax, _anim2 = animate_state_over_list_1d_x(state_scattered_evolved, ax=ax1)
@@ -148,19 +142,29 @@ def plot_pair_system_evolution(
 def plot_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    temperature: float,
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
+    *,
     n_repeats: int = 10,
 ) -> None:
-    data = get_average_boltzmann_isf(
+    data = get_boltzmann_isf(
         system,
         config,
         times,
         direction,
-        temperature,
-        n_repeats,
+        n_repeats=n_repeats,
     )
-    fig, _, _ = plot_value_list_against_time(data)
+    fig, ax, line = plot_value_list_against_time(data)
+    line.set_label("abs ISF")
+
+    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
+    line.set_label("real ISF")
+
+    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
+    line.set_label("imag ISF")
+
+    ax.set_ylabel("ISF")
+    ax.legend()
+
     fig.show()
     input()

@@ -8,7 +8,7 @@ from coherent_rates.system import (
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((20,), (50,), 50)
+    config = PeriodicSystemConfig((20,), (50,), 50, temperature=155)
     system = HYDROGEN_NICKEL_SYSTEM
     potential = get_extended_interpolated_potential(
         system,
@@ -17,4 +17,4 @@ if __name__ == "__main__":
     )
 
     times = EvenlySpacedTimeBasis(100, 1, 0, 1e-13)
-    plot_boltzmann_isf(system, config, 155, times, (54,))
+    plot_boltzmann_isf(system, config, times, (54,))
