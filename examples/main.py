@@ -1,10 +1,6 @@
-import numpy as np
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.stacked_basis.conversion import (
-    stacked_basis_as_fundamental_position_basis,
-)
 
-from coherent_rates.plot import plot_pair_system_evolution
+from coherent_rates.plot import plot_boltzmann_isf
 from coherent_rates.system import (
     HYDROGEN_NICKEL_SYSTEM,
     PeriodicSystemConfig,
@@ -12,7 +8,7 @@ from coherent_rates.system import (
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((5,), (100,), 50)
+    config = PeriodicSystemConfig((20,), (50,), 50)
     system = HYDROGEN_NICKEL_SYSTEM
     potential = get_extended_interpolated_potential(
         system,
@@ -20,12 +16,5 @@ if __name__ == "__main__":
         config.resolution,
     )
 
-    initial_state = {
-        "basis": stacked_basis_as_fundamental_position_basis(potential["basis"]),
-        "data": np.zeros(500, dtype=np.complex128),
-    }
-    for i in range(50):
-        initial_state["data"][i] = 1
-
-    times0 = EvenlySpacedTimeBasis(100, 1, 0, 5e-14)
-    plot_pair_system_evolution(system, config, initial_state, times0)
+    times = EvenlySpacedTimeBasis(100, 1, 0, 1e-13)
+    plot_boltzmann_isf(system, config, 155, times, (54,))
