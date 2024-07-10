@@ -25,7 +25,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 from coherent_rates.system import (
     PeriodicSystem,
     PeriodicSystemConfig,
-    get_average_boltzmann_isf,
+    get_boltzmann_isf,
     get_extended_interpolated_potential,
     get_hamiltonian,
     solve_schrodinger_equation,
@@ -67,20 +67,6 @@ def plot_system_eigenstates(
 
 
 def plot_system_evolution(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    initial_state: StateVector[Any],
-    times: EvenlySpacedTimeBasis[Any, Any, Any],
-) -> None:
-    states = solve_schrodinger_equation(system, config, initial_state, times)
-
-    fig, _ax, _anim = animate_state_over_list_1d_x(states)
-
-    fig.show()
-    input()
-
-
-def plot_system_evolution_with_potential(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
@@ -148,19 +134,21 @@ def plot_pair_system_evolution(
 def plot_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    temperature: float,
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
+    *,
     n_repeats: int = 10,
 ) -> None:
-    data = get_average_boltzmann_isf(
+    data = get_boltzmann_isf(
         system,
         config,
         times,
         direction,
-        temperature,
+        config.temperature,
         n_repeats,
     )
     fig, ax, line = plot_value_list_against_time(data)
+    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
+    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
     fig.show()
     input()

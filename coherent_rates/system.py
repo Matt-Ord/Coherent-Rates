@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
 from scipy.constants import electron_volt, hbar, k
+from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -18,9 +19,13 @@ from surface_potential_analysis.basis.evenly_spaced_basis import (
 )
 from surface_potential_analysis.basis.stacked_basis import (
     TupleBasis,
+    TupleBasisLike,
     TupleBasisWithLengthLike,
 )
-from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+from surface_potential_analysis.basis.time_basis_like import (
+    BasisWithTimeLike,
+    EvenlySpacedTimeBasis,
+)
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -49,6 +54,7 @@ from surface_potential_analysis.state_vector.state_vector import calculate_norma
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
+from surface_potential_analysis.util.util import get_measured_data
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     get_full_bloch_hamiltonian,
 )
@@ -96,6 +102,7 @@ class PeriodicSystemConfig:
     shape: tuple[int]
     resolution: tuple[int]
     n_bands: int
+    temperature: float
 
 
 HYDROGEN_NICKEL_SYSTEM = PeriodicSystem(
@@ -194,7 +201,7 @@ def _get_full_hamiltonian(
     return total_surface_hamiltonian(converted, system.mass, bloch_fraction)
 
 
-def _get_bloch_wavefunctions(
+def get_bloch_wavefunctions(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> BlochWavefunctionListWithEigenvaluesList[
@@ -214,7 +221,6 @@ def _get_bloch_wavefunctions(
             bloch_fraction=bloch_fraction,
         )
 
-    TupleBasis(FundamentalBasis)
     return generate_wavepacket(
         hamiltonian_generator,
         save_bands=EvenlySpacedBasis(config.n_bands, 1, 0),
@@ -226,7 +232,7 @@ def get_hamiltonian(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> SingleBasisDiagonalOperator[ExplicitStackedBasisWithLength[Any, Any]]:
-    wavefunctions = _get_bloch_wavefunctions(system, config)
+    wavefunctions = get_bloch_wavefunctions(system, config)
 
     return get_full_bloch_hamiltonian(wavefunctions)
 
@@ -248,7 +254,7 @@ def get_step_state(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     fraction: float | None,
-) -> StateVector[Any]:
+) -> StateVector[TupleBasisWithLengthLike[FundamentalPositionBasis[Any, Literal[1]]]]:
     potential = get_extended_interpolated_potential(
         system,
         config.shape,
@@ -256,7 +262,7 @@ def get_step_state(
     )
     basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
 
-    initial_state = {
+    initial_state: StateVector[Any] = {
         "basis": basis,
         "data": np.zeros(basis.n, dtype=np.complex128),
     }
@@ -270,7 +276,7 @@ def get_gaussian_state(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     fraction: float,
-) -> StateVector[Any]:
+) -> StateVector[TupleBasisWithLengthLike[FundamentalPositionBasis[Any, Literal[1]]]]:
     potential = get_extended_interpolated_potential(
         system,
         config.shape,
@@ -286,7 +292,7 @@ def get_gaussian_state(
         data[i] = -np.square(i - size / 2) / (2 * width * width)
 
     data = np.exp(data)
-    initial_state = {
+    initial_state: StateVector[Any] = {
         "basis": basis,
         "data": data,
     }
@@ -328,7 +334,7 @@ def get_isf(
     )
 
 
-def get_isf_from_hamiltonian(
+def _get_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[Any],
     operator: SingleBasisOperator[Any],
     initial_state: StateVector[Any],
@@ -356,11 +362,33 @@ def get_isf_from_hamiltonian(
     )
 
 
+def _get_boltzmann_state_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[Any],
+    temperature: float,
+    phase: float,
+) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
+    boltzmann_distribution = np.exp(
+        -hamiltonian["data"] / (2 * k * temperature),
+    )
+    normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
+    boltzmann_state = boltzmann_distribution * np.exp(1j * phase) / normalization
+    return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
+
+
+def _get_random_boltzmann_state_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[Any],
+    temperature: float,
+) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
+    state = _get_boltzmann_state_from_hamiltonian(hamiltonian, temperature, 0)
+    random_phase = np.exp(2j * np.pi * np.random.rand(len(state["data"])))
+    boltzmann_state = state["data"] * random_phase
+    return {"basis": state["basis"], "data": boltzmann_state}
+
+
 def get_random_boltzmann_state(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    temperature: float,
-) -> StateVector[Any]:
+) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
     """Generate a random Boltzmann state.
 
     Follows the formula described in eqn 5 in
@@ -379,54 +407,38 @@ def get_random_boltzmann_state(
 
     """
     hamiltonian = get_hamiltonian(system, config)
-    boltzmann_distribution = np.exp(
-        -hamiltonian["data"] / (2 * k * temperature),
-    )
-
-    random_phase = np.exp(2j * np.pi * np.random.rand(len(hamiltonian["data"])))
-    normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
-    boltzmann_state = boltzmann_distribution * random_phase / normalization
-    return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
+    return _get_random_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature)
 
 
 def get_boltzmann_state(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    temperature: float,
     phase: float,
-) -> StateVector[Any]:
+) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
     hamiltonian = get_hamiltonian(system, config)
-    boltzmann_distribution = np.exp(
-        -hamiltonian["data"] / (2 * k * temperature),
-    )
-
-    normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
-    boltzmann_state = boltzmann_distribution * np.exp(1j * phase) / normalization
-    return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
+    return _get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
 
 
-def get_average_boltzmann_isf(
+def get_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _AX0Inv,
     direction: tuple[int] = (1,),
-    temperature: float = 300,
-    n: int = 10,
+    average_over: int = 10,
 ) -> ValueList[_AX0Inv]:
     isf_data = np.zeros(times.n, dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
 
-    for _i in range(n):
-        isf_data += get_isf_from_hamiltonian(
+    for _i in range(average_over):
+        state = _get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
-            operator,
-            get_random_boltzmann_state(system, config, temperature),
-            times,
-        )["data"]
-    isf_data = isf_data / n
+            config.temperature,
+        )
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data += data["data"]
     return {
-        "data": isf_data,
+        "data": isf_data / average_over,
         "basis": times,
     }
 
@@ -434,7 +446,6 @@ def get_average_boltzmann_isf(
 def get_cl_operator(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    temperature: float,
 ) -> SingleBasisOperator[Any]:
     """Generate the operator for the stationary Caldeira-Leggett solution.
 
@@ -459,21 +470,21 @@ def get_cl_operator(
     )
 
     converted_potential = convert_potential_to_position_basis(potential)
-    size_pos = converted_potential["basis"].n  # size of position basis
+    size_position = converted_potential["basis"].n  # size of position basis
     x_spacing = (
         system.lattice_constant * np.sqrt(3) / (2 * config.resolution[0])
     )  # size of each x interval
     m = system.mass
 
     data = converted_potential["data"]
-    matrix = np.zeros((size_pos, size_pos), dtype=np.complex128)
+    matrix = np.zeros((size_position, size_position), dtype=np.complex128)
 
-    for i in range(size_pos):
+    for i in range(size_position):
         for j in range(i + 1):
             matrix[i][j] = -(data[int((i + j) / 2)] + data[int((i + j + 1) / 2)]) / (
-                2 * k * temperature
-            ) - (m * k * temperature * np.square(x_spacing)) * np.square(
-                (i - j + (size_pos) // 2) % size_pos - size_pos // 2,
+                2 * k * config.temperature
+            ) - (m * k * config.temperature * np.square(x_spacing)) * np.square(
+                (i - j + (size_position) // 2) % size_position - size_position // 2,
             ) / (2 * np.square(hbar))
             matrix[j][i] = matrix[i][j]
     matrix_pos = np.exp(matrix)  # density matrix in position basis (unnormalized)
@@ -482,3 +493,35 @@ def get_cl_operator(
         "basis": TupleBasis(converted_potential["basis"], converted_potential["basis"]),
         "data": matrix_pos,
     }
+
+
+_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
+
+
+def get_gaussian_fit(
+    values: ValueList[_BT0],
+) -> tuple[float, float, float, float]:
+    times = values["basis"]
+    xdata = times.times
+    xdata1 = range(len(xdata))
+
+    ydata = get_measured_data(values["data"], "abs")
+
+    def gauss(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        a: float,
+        b: float,
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return a * np.exp(-1 * np.square(x / b) / 2)
+
+    parameters, covariance = curve_fit(gauss, xdata1, ydata)
+    fit_A = parameters[0]
+    fit_B = parameters[1]
+    dt = times.times[1]
+
+    return (
+        fit_A,
+        np.sqrt(covariance[0][0]),
+        fit_B * dt,
+        np.sqrt(covariance[1][1]) * dt,
+    )
