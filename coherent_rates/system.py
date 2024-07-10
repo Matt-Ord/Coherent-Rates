@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
 from scipy.constants import electron_volt, hbar, k
-from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -23,7 +22,6 @@ from surface_potential_analysis.basis.stacked_basis import (
     TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import (
-    BasisWithTimeLike,
     EvenlySpacedTimeBasis,
 )
 from surface_potential_analysis.dynamics.schrodinger.solve import (
@@ -31,10 +29,6 @@ from surface_potential_analysis.dynamics.schrodinger.solve import (
 )
 from surface_potential_analysis.hamiltonian_builder.momentum_basis import (
     total_surface_hamiltonian,
-)
-from surface_potential_analysis.operator.operations import apply_operator_to_states
-from surface_potential_analysis.operator.operator import (
-    apply_operator_to_state,
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_basis,
@@ -47,14 +41,7 @@ from surface_potential_analysis.stacked_basis.conversion import (
     stacked_basis_as_fundamental_momentum_basis,
     stacked_basis_as_fundamental_position_basis,
 )
-from surface_potential_analysis.state_vector.plot import (
-    get_periodic_x_operator,
-)
 from surface_potential_analysis.state_vector.state_vector import calculate_normalization
-from surface_potential_analysis.state_vector.state_vector_list import (
-    calculate_inner_products_elementwise,
-)
-from surface_potential_analysis.util.util import get_measured_data
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     get_full_bloch_hamiltonian,
 )
@@ -72,9 +59,6 @@ if TYPE_CHECKING:
         SingleBasisOperator,
     )
     from surface_potential_analysis.potential.potential import Potential
-    from surface_potential_analysis.state_vector.eigenstate_collection import (
-        ValueList,
-    )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import (
         StateVectorList,
@@ -304,145 +288,6 @@ def get_gaussian_state(
     return initial_state
 
 
-def get_isf(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    initial_state: StateVector[Any],
-    times: _AX0Inv,
-    direction: tuple[int] = (1,),
-) -> ValueList[_AX0Inv]:
-    operator = get_periodic_x_operator(
-        initial_state["basis"],
-        direction=direction,
-    )
-
-    state_evolved = solve_schrodinger_equation(system, config, initial_state, times)
-
-    state_evolved_scattered = apply_operator_to_states(operator, state_evolved)
-
-    state_scattered = apply_operator_to_state(operator, initial_state)
-
-    state_scattered_evolved = solve_schrodinger_equation(
-        system,
-        config,
-        state_scattered,
-        times,
-    )
-    return calculate_inner_products_elementwise(
-        state_scattered_evolved,
-        state_evolved_scattered,
-    )
-
-
-def _get_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
-    operator: SingleBasisOperator[Any],
-    initial_state: StateVector[Any],
-    times: _AX0Inv,
-) -> ValueList[_AX0Inv]:
-    state_evolved = solve_schrodinger_equation_diagonal(
-        initial_state,
-        times,
-        hamiltonian,
-    )
-
-    state_evolved_scattered = apply_operator_to_states(operator, state_evolved)
-
-    state_scattered = apply_operator_to_state(operator, initial_state)
-
-    state_scattered_evolved = solve_schrodinger_equation_diagonal(
-        state_scattered,
-        times,
-        hamiltonian,
-    )
-
-    return calculate_inner_products_elementwise(
-        state_scattered_evolved,
-        state_evolved_scattered,
-    )
-
-
-def _get_boltzmann_state_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
-    temperature: float,
-    phase: float,
-) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
-    boltzmann_distribution = np.exp(
-        -hamiltonian["data"] / (2 * k * temperature),
-    )
-    normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
-    boltzmann_state = boltzmann_distribution * np.exp(1j * phase) / normalization
-    return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
-
-
-def _get_random_boltzmann_state_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
-    temperature: float,
-) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
-    state = _get_boltzmann_state_from_hamiltonian(hamiltonian, temperature, 0)
-    random_phase = np.exp(2j * np.pi * np.random.rand(len(state["data"])))
-    boltzmann_state = state["data"] * random_phase
-    return {"basis": state["basis"], "data": boltzmann_state}
-
-
-def get_random_boltzmann_state(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
-    """Generate a random Boltzmann state.
-
-    Follows the formula described in eqn 5 in
-    https://doi.org/10.48550/arXiv.2002.12035.
-
-
-    Args:
-    ----
-        system (PeriodicSystem): system
-        config (PeriodicSystemConfig): config
-        temperature (float): temperature of the system
-
-    Returns:
-    -------
-        StateVector[Any]: state with boltzmann distribution
-
-    """
-    hamiltonian = get_hamiltonian(system, config)
-    return _get_random_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature)
-
-
-def get_boltzmann_state(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    phase: float,
-) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
-    hamiltonian = get_hamiltonian(system, config)
-    return _get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
-
-
-def get_boltzmann_isf(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    times: _AX0Inv,
-    direction: tuple[int] = (1,),
-    average_over: int = 10,
-) -> ValueList[_AX0Inv]:
-    isf_data = np.zeros(times.n, dtype=np.complex128)
-    hamiltonian = get_hamiltonian(system, config)
-    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
-
-    for _i in range(average_over):
-        state = _get_random_boltzmann_state_from_hamiltonian(
-            hamiltonian,
-            config.temperature,
-        )
-        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
-        isf_data += data["data"]
-    return {
-        "data": isf_data / average_over,
-        "basis": times,
-    }
-
-
 def get_cl_operator(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
@@ -493,35 +338,3 @@ def get_cl_operator(
         "basis": TupleBasis(converted_potential["basis"], converted_potential["basis"]),
         "data": matrix_pos,
     }
-
-
-_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
-
-
-def get_gaussian_fit(
-    values: ValueList[_BT0],
-) -> tuple[float, float, float, float]:
-    times = values["basis"]
-    xdata = times.times
-    xdata1 = range(len(xdata))
-
-    ydata = get_measured_data(values["data"], "abs")
-
-    def gauss(
-        x: np.ndarray[Any, np.dtype[np.float64]],
-        a: float,
-        b: float,
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
-        return a * np.exp(-1 * np.square(x / b) / 2)
-
-    parameters, covariance = curve_fit(gauss, xdata1, ydata)
-    fit_A = parameters[0]
-    fit_B = parameters[1]
-    dt = times.times[1]
-
-    return (
-        fit_A,
-        np.sqrt(covariance[0][0]),
-        fit_B * dt,
-        np.sqrt(covariance[1][1]) * dt,
-    )
