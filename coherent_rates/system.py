@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
+import scipy
+import scipy.optimize
 from scipy.constants import electron_volt, hbar, k
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
@@ -22,6 +24,7 @@ from surface_potential_analysis.basis.stacked_basis import (
     TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import (
+    BasisWithTimeLike,
     EvenlySpacedTimeBasis,
 )
 from surface_potential_analysis.dynamics.schrodinger.solve import (
@@ -42,6 +45,7 @@ from surface_potential_analysis.stacked_basis.conversion import (
     stacked_basis_as_fundamental_position_basis,
 )
 from surface_potential_analysis.state_vector.state_vector import calculate_normalization
+from surface_potential_analysis.util.util import get_measured_data
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     get_full_bloch_hamiltonian,
 )
@@ -59,6 +63,7 @@ if TYPE_CHECKING:
         SingleBasisOperator,
     )
     from surface_potential_analysis.potential.potential import Potential
+    from surface_potential_analysis.state_vector.eigenstate_collection import ValueList
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import (
         StateVectorList,
@@ -338,3 +343,35 @@ def get_cl_operator(
         "basis": TupleBasis(converted_potential["basis"], converted_potential["basis"]),
         "data": matrix_pos,
     }
+
+
+_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
+
+
+def get_gaussian_fit(
+    values: ValueList[_BT0],
+) -> tuple[float, float, float, float]:
+    times = values["basis"]
+    xdata = times.times
+    xdata1 = range(len(xdata))
+
+    ydata = get_measured_data(values["data"], "abs")
+
+    def gauss(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        a: float,
+        b: float,
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return a * np.exp(-1 * np.square(x / b) / 2)
+
+    parameters, covariance = scipy.optimize.curve_fit(gauss, xdata1, ydata)
+    fit_A = parameters[0]
+    fit_B = parameters[1]
+    dt = times.times[1]
+
+    return (
+        fit_A,
+        np.sqrt(covariance[0][0]),
+        fit_B * dt,
+        np.sqrt(covariance[1][1]) * dt,
+    )

@@ -26,7 +26,10 @@ if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
         ExplicitStackedBasisWithLength,
     )
-    from surface_potential_analysis.state_vector.eigenstate_collection import ValueList
+    from surface_potential_analysis.state_vector.eigenstate_collection import (
+        StatisticalValueList,
+        ValueList,
+    )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import (
         StateVectorList,
@@ -192,4 +195,32 @@ def get_boltzmann_isf(
     return {
         "data": isf_data / n_repeats,
         "basis": times,
+    }
+
+
+def get_boltzmann_isf_stats(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _AX0Inv,
+    direction: tuple[int] = (1,),
+    *,
+    average_over: int = 10,
+) -> StatisticalValueList[_AX0Inv]:
+    isf_data = np.zeros((average_over, times.n), dtype=np.complex128)
+    hamiltonian = get_hamiltonian(system, config)
+    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
+
+    for _i in range(average_over):
+        state = _get_random_boltzmann_state_from_hamiltonian(
+            hamiltonian,
+            config.temperature,
+        )
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data[_i, :] = data["data"]
+    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+    sd = np.std(isf_data, axis=0, dtype=np.complex128)
+    return {
+        "data": mean,
+        "basis": times,
+        "standard_deviation": sd,
     }
