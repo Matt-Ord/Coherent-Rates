@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
-from scipy.constants import electron_volt, hbar, k
+from scipy.constants import Boltzmann, electron_volt, hbar
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -17,12 +17,17 @@ from surface_potential_analysis.basis.evenly_spaced_basis import (
     EvenlySpacedTransformedPositionBasis,
 )
 from surface_potential_analysis.basis.stacked_basis import (
+    StackedBasisWithVolumeLike,
     TupleBasis,
     TupleBasisLike,
     TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import (
     EvenlySpacedTimeBasis,
+)
+from surface_potential_analysis.basis.util import (
+    get_displacements_x,
+    get_twice_average_nx,
 )
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
@@ -65,7 +70,6 @@ if TYPE_CHECKING:
     )
 
 _L0Inv = TypeVar("_L0Inv", bound=int)
-_L1Inv = TypeVar("_L1Inv", bound=int)
 
 
 @dataclass
@@ -111,7 +115,7 @@ LITHIUM_COPPER_SYSTEM = PeriodicSystem(
 )
 
 
-def get_potential(
+def _get_base_potential(
     system: PeriodicSystem,
 ) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
     delta_x = np.sqrt(3) * system.lattice_constant / 2
@@ -120,13 +124,13 @@ def get_potential(
     return {"basis": TupleBasis(axis), "data": vector}
 
 
-def get_interpolated_potential(
+def _get_interpolated_potential(
     system: PeriodicSystem,
     resolution: tuple[_L0Inv],
 ) -> Potential[
     TupleBasisWithLengthLike[FundamentalTransformedPositionBasis[_L0Inv, Literal[1]]]
 ]:
-    potential = get_potential(system)
+    potential = _get_base_potential(system)
     old = potential["basis"][0]
     basis = TupleBasis(
         TransformedPositionBasis1d[_L0Inv, Literal[3]](
@@ -142,19 +146,19 @@ def get_interpolated_potential(
     )
 
 
-def get_extended_interpolated_potential(
+def _get_extended_potential(
     system: PeriodicSystem,
-    shape: tuple[_L0Inv],
-    resolution: tuple[_L1Inv],
+    shape: tuple[int],
+    resolution: tuple[int],
 ) -> Potential[
     TupleBasisWithLengthLike[
-        EvenlySpacedTransformedPositionBasis[_L1Inv, _L0Inv, Literal[0], Literal[1]]
+        EvenlySpacedTransformedPositionBasis[int, int, Literal[0], Literal[1]]
     ]
 ]:
-    interpolated = get_interpolated_potential(system, resolution)
+    interpolated = _get_interpolated_potential(system, resolution)
     old = interpolated["basis"][0]
     basis = TupleBasis(
-        EvenlySpacedTransformedPositionBasis[_L1Inv, _L0Inv, Literal[0], Literal[1]](
+        EvenlySpacedTransformedPositionBasis[int, int, Literal[0], Literal[1]](
             old.delta_x * shape[0],
             n=old.n,
             step=shape[0],
@@ -166,21 +170,30 @@ def get_extended_interpolated_potential(
     return {"basis": basis, "data": scaled_potential}
 
 
+def get_potential(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> Potential[
+    TupleBasisWithLengthLike[
+        EvenlySpacedTransformedPositionBasis[int, int, Literal[0], Literal[1]]
+    ]
+]:
+    return _get_extended_potential(system, config.shape, config.resolution)
+
+
 def _get_full_hamiltonian(
     system: PeriodicSystem,
     shape: tuple[_L0Inv],
-    resolution: tuple[_L0Inv],
+    resolution: tuple[int],
     *,
     bloch_fraction: np.ndarray[tuple[Literal[1]], np.dtype[np.float64]] | None = None,
-) -> SingleBasisOperator[
-    TupleBasisWithLengthLike[FundamentalPositionBasis[int, Literal[1]]],
-]:
+) -> SingleBasisOperator[StackedBasisWithVolumeLike[Any, Any, Any]]:
     bloch_fraction = np.array([0]) if bloch_fraction is None else bloch_fraction
 
-    potential = get_extended_interpolated_potential(system, shape, resolution)
+    potential = _get_extended_potential(system, shape, resolution)
     converted = convert_potential_to_basis(
         potential,
-        stacked_basis_as_fundamental_position_basis(potential["basis"]),
+        stacked_basis_as_fundamental_momentum_basis(potential["basis"]),
     )
     return total_surface_hamiltonian(converted, system.mass, bloch_fraction)
 
@@ -191,13 +204,11 @@ def get_bloch_wavefunctions(
 ) -> BlochWavefunctionListWithEigenvaluesList[
     EvenlySpacedBasis[int, int, int],
     TupleBasisLike[FundamentalBasis[int]],
-    TupleBasisWithLengthLike[FundamentalPositionBasis[int, Literal[1]]],
+    StackedBasisWithVolumeLike[Any, Any, Any],
 ]:
     def hamiltonian_generator(
         bloch_fraction: np.ndarray[tuple[Literal[1]], np.dtype[np.float64]],
-    ) -> SingleBasisOperator[
-        TupleBasisWithLengthLike[FundamentalPositionBasis[int, Literal[1]]]
-    ]:
+    ) -> SingleBasisOperator[StackedBasisWithVolumeLike[Any, Any, Any]]:
         return _get_full_hamiltonian(
             system,
             (1,),
@@ -239,11 +250,7 @@ def get_step_state(
     config: PeriodicSystemConfig,
     fraction: float | None,
 ) -> StateVector[TupleBasisWithLengthLike[FundamentalPositionBasis[Any, Literal[1]]]]:
-    potential = get_extended_interpolated_potential(
-        system,
-        config.shape,
-        config.resolution,
-    )
+    potential = get_potential(system, config)
     basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
 
     initial_state: StateVector[Any] = {
@@ -261,11 +268,7 @@ def get_gaussian_state(
     config: PeriodicSystemConfig,
     fraction: float,
 ) -> StateVector[TupleBasisWithLengthLike[FundamentalPositionBasis[Any, Literal[1]]]]:
-    potential = get_extended_interpolated_potential(
-        system,
-        config.shape,
-        config.resolution,
-    )
+    potential = get_potential(system, config)
     basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
 
     size = basis.n
@@ -308,33 +311,37 @@ def get_cl_operator(
         SingleBasisOperator[Any]: _description_
 
     """
-    potential = get_extended_interpolated_potential(
-        system,
-        config.shape,
-        config.resolution,
-    )
+    potential = get_potential(system, config)
 
+    basis_x = stacked_basis_as_fundamental_position_basis(potential["basis"])
     converted_potential = convert_potential_to_position_basis(potential)
-    size_position = converted_potential["basis"].n  # size of position basis
-    x_spacing = (
-        system.lattice_constant * np.sqrt(3) / (2 * config.resolution[0])
-    )  # size of each x interval
-    m = system.mass
 
-    data = converted_potential["data"]
-    matrix = np.zeros((size_position, size_position), dtype=np.complex128)
+    displacements = get_displacements_x(basis_x)
+    average_nx = get_twice_average_nx(basis_x)
 
-    for i in range(size_position):
-        for j in range(i + 1):
-            matrix[i][j] = -(data[int((i + j) / 2)] + data[int((i + j + 1) / 2)]) / (
-                2 * k * config.temperature
-            ) - (m * k * config.temperature * np.square(x_spacing)) * np.square(
-                (i - j + (size_position) // 2) % size_position - size_position // 2,
-            ) / (2 * np.square(hbar))
-            matrix[j][i] = matrix[i][j]
-    matrix_pos = np.exp(matrix)  # density matrix in position basis (unnormalized)
+    n_states = basis_x.n
+
+    # if average_nx // 2 is an integer, this is just V[i]
+    # Otherwise this averages V[floor average_nx // 2] and V[ceil average_nx // 2]
+    floor_idx = np.floor(average_nx[0] / 2).astype(np.int_) % n_states
+    ceil_idx = np.ceil(average_nx[0] / 2).astype(np.int_) % n_states
+    average_potential = (
+        converted_potential["data"][floor_idx] + converted_potential["data"][ceil_idx]
+    ) / 2
+
+    # density matrix in position basis (un-normalized)
+    # \rho_s(x, x') = N \exp(-V(x+x' / 2) / kt - mkt(x-x')^2/ 2hbar^2)
+    matrix = np.exp(
+        -(
+            (average_potential / (Boltzmann * config.temperature))
+            + (
+                (system.mass * Boltzmann * config.temperature * displacements**2)
+                / (2 * hbar**2)
+            )
+        ),
+    )
 
     return {
         "basis": TupleBasis(converted_potential["basis"], converted_potential["basis"]),
-        "data": matrix_pos,
+        "data": matrix.ravel(),
     }

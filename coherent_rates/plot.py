@@ -21,8 +21,8 @@ from coherent_rates.isf import get_boltzmann_isf, get_isf_pair_states
 from coherent_rates.system import (
     PeriodicSystem,
     PeriodicSystemConfig,
-    get_extended_interpolated_potential,
     get_hamiltonian,
+    get_potential,
     solve_schrodinger_equation,
 )
 
@@ -39,11 +39,7 @@ def plot_system_eigenstates(
     config: PeriodicSystemConfig,
 ) -> None:
     """Plot the potential against position."""
-    potential = get_extended_interpolated_potential(
-        system,
-        config.shape,
-        config.resolution,
-    )
+    potential = get_potential(system, config)
     fig, ax, _ = plot_potential_1d_x(potential)
 
     hamiltonian = get_hamiltonian(system, config)
@@ -67,11 +63,7 @@ def plot_system_evolution(
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
-    potential = get_extended_interpolated_potential(
-        system,
-        config.shape,
-        config.resolution,
-    )
+    potential = get_potential(system, config)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
@@ -90,11 +82,7 @@ def plot_pair_system_evolution(
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
 ) -> None:
-    potential = get_extended_interpolated_potential(
-        system,
-        config.shape,
-        config.resolution,
-    )
+    potential = get_potential(system, config)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
