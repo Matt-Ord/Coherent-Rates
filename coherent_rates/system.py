@@ -101,6 +101,13 @@ HYDROGEN_NICKEL_SYSTEM = PeriodicSystem(
     mass=1.67e-27,
 )
 
+HYDROGEN_FREE = PeriodicSystem(
+    id="HFree",
+    barrier_energy=0,
+    lattice_constant=2.46e-10 / np.sqrt(2),
+    mass=1.67e-27,
+)
+
 SODIUM_COPPER_SYSTEM = PeriodicSystem(
     id="NaCu",
     barrier_energy=55e-3 * electron_volt,
@@ -108,9 +115,23 @@ SODIUM_COPPER_SYSTEM = PeriodicSystem(
     mass=3.8175458e-26,
 )
 
+SODIUM_FREE = PeriodicSystem(
+    id="NaCu",
+    barrier_energy=0,
+    lattice_constant=3.615e-10,
+    mass=3.8175458e-26,
+)
+
 LITHIUM_COPPER_SYSTEM = PeriodicSystem(
     id="LiCu",
     barrier_energy=45e-3 * electron_volt,
+    lattice_constant=3.615e-10,
+    mass=1.152414898e-26,
+)
+
+LITHIUM_FREE = PeriodicSystem(
+    id="LiCu",
+    barrier_energy=0,
     lattice_constant=3.615e-10,
     mass=1.152414898e-26,
 )
