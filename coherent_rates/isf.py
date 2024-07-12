@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 from scipy.constants import Boltzmann
-from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+from surface_potential_analysis.basis.time_basis_like import (
+    EvenlySpacedTimeBasis,
+)
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -20,7 +22,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
 
-from coherent_rates.system import get_hamiltonian
+from coherent_rates.system import get_gaussian_fit, get_hamiltonian, get_potential
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -168,16 +170,15 @@ def get_random_boltzmann_state(
     return _get_random_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature)
 
 
-def get_boltzmann_isf(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
+def get_boltzmann_isf_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[Any],
+    temperature: float,
     times: _AX0Inv,
     direction: tuple[int] = (1,),
     *,
     n_repeats: int = 10,
 ) -> ValueList[_AX0Inv]:
     isf_data = np.zeros(times.n, dtype=np.complex128)
-    hamiltonian = get_hamiltonian(system, config)
     # Convert the operator to the hamiltonian basis
     # to prevent conversion in each repeat
     operator = convert_operator_to_basis(
@@ -188,7 +189,7 @@ def get_boltzmann_isf(
     for _i in range(n_repeats):
         state = _get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
-            config.temperature,
+            temperature,
         )
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
         isf_data += data["data"]
@@ -196,6 +197,24 @@ def get_boltzmann_isf(
         "data": isf_data / n_repeats,
         "basis": times,
     }
+
+
+def get_boltzmann_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _AX0Inv,
+    direction: tuple[int] = (1,),
+    *,
+    n_repeats: int = 10,
+) -> ValueList[_AX0Inv]:
+    hamiltonian = get_hamiltonian(system, config)
+    return get_boltzmann_isf_from_hamiltonian(
+        hamiltonian,
+        config.temperature,
+        times,
+        direction,
+        n_repeats=n_repeats,
+    )
 
 
 def get_boltzmann_isf_stats(
@@ -224,3 +243,56 @@ def get_boltzmann_isf_stats(
         "basis": times,
         "standard_deviation": sd,
     }
+
+
+def truncate_value_list(
+    values: ValueList[EvenlySpacedTimeBasis[int, int, int]],
+    index: int,
+) -> ValueList[EvenlySpacedTimeBasis[int, int, int]]:
+    data = values["data"][0 : index + 1]
+    new_times = EvenlySpacedTimeBasis(index + 1, 1, 0, values["basis"].times[index])
+    return {
+        "basis": new_times,
+        "data": data,
+    }
+
+
+def get_ak_data_1d(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _AX0Inv,
+    *,
+    n_points: int = 8,
+) -> tuple[
+    np.ndarray[tuple[int], np.dtype[np.float64]],
+    np.ndarray[tuple[int], np.dtype[np.float64]],
+]:
+    length = get_potential(system)["basis"].delta_x_stacked[0] * config.shape[0]
+    kpoints = config.shape[0] * config.resolution[0]
+    xdata = np.floor(np.linspace(int(kpoints / 10), int(kpoints * 0.45), n_points))
+    ydata = np.zeros(xdata.shape)
+    hamiltonian = get_hamiltonian(system, config)
+    for i in range(n_points):
+        isf = get_boltzmann_isf_from_hamiltonian(
+            hamiltonian,
+            config.temperature,
+            times,
+            (xdata[i],),
+            n_repeats=20,
+        )
+        idx = times.n - 1
+        data = np.abs(isf["data"])
+        for _i in range(times.n - 1):
+            if data[_i + 1] > data[_i]:
+                idx = _i
+                break
+        truncated_isf = truncate_value_list(isf, idx)
+        ydata[i] = 1 / get_gaussian_fit(truncated_isf)[2]
+        times = EvenlySpacedTimeBasis(
+            times.n,
+            times.step,
+            times.offset,
+            times.times[idx] * 1.2,
+        )
+    xdata = xdata * 2 * np.pi / length
+    return (xdata, ydata)
