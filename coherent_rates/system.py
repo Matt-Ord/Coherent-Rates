@@ -222,7 +222,7 @@ def get_bloch_wavefunctions(
 
     return generate_wavepacket(
         hamiltonian_generator,
-        save_bands=EvenlySpacedBasis(config.n_bands, 1, 0),
+        band_basis=EvenlySpacedBasis(config.n_bands, 1, 0),
         list_basis=fundamental_stacked_basis_from_shape(config.shape),
     )
 

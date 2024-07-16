@@ -20,6 +20,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
 from surface_potential_analysis.util.plot import get_figure
+from surface_potential_analysis.wavepacket.plot import plot_wavepacket_eigenvalues_1d_k
 
 from coherent_rates.isf import (
     MomentumBasis,
@@ -30,6 +31,7 @@ from coherent_rates.isf import (
 from coherent_rates.system import (
     PeriodicSystem,
     PeriodicSystemConfig,
+    get_bloch_wavefunctions,
     get_hamiltonian,
     get_potential,
     solve_schrodinger_equation,
@@ -66,6 +68,18 @@ def plot_system_eigenstates(
 
     fig.show()
     fig2.show()
+    input()
+
+
+def plot_system_bands(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> None:
+    """Plot the potential against position."""
+    wavefunctions = get_bloch_wavefunctions(system, config)
+    fig, _ = plot_wavepacket_eigenvalues_1d_k(wavefunctions)
+
+    fig.show()
     input()
 
 
