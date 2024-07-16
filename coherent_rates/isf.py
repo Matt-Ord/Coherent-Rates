@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
-from scipy.constants import Boltzmann
+from scipy.constants import Boltzmann, atomic_mass
+from scipy.optimize import curve_fit
+from surface_potential_analysis.basis.basis import FundamentalBasis
 from surface_potential_analysis.basis.time_basis_like import (
+    BasisWithTimeLike,
     EvenlySpacedTimeBasis,
 )
+from surface_potential_analysis.basis.util import BasisUtil
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -21,8 +26,9 @@ from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
+from surface_potential_analysis.util.util import get_measured_data
 
-from coherent_rates.system import get_gaussian_fit, get_hamiltonian, get_potential
+from coherent_rates.system import get_hamiltonian, get_potential
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -40,6 +46,30 @@ if TYPE_CHECKING:
     from coherent_rates.system import PeriodicSystem, PeriodicSystemConfig
 
 _AX0Inv = TypeVar("_AX0Inv", bound=EvenlySpacedTimeBasis[Any, Any, Any])
+
+
+@dataclass
+class GaussianFitData:
+    """Represents the parameters from a Gaussian fit."""
+
+    amplitude: float
+    amp_error: float
+    sd: float
+    sd_error: float
+
+
+@dataclass
+class DoubleGaussianFitData:
+    """Represents the parameters from a double Gaussian fit."""
+
+    amplitude1: float
+    amp1_error: float
+    sd1: float
+    sd1_error: float
+    amplitude2: float
+    amp2_error: float
+    sd2: float
+    sd2_error: float
 
 
 def _get_isf_pair_states_from_hamiltonian(
@@ -170,13 +200,13 @@ def get_random_boltzmann_state(
     return _get_random_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature)
 
 
-def get_boltzmann_isf_from_hamiltonian(
+def _get_boltzmann_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[Any],
     temperature: float,
     times: _AX0Inv,
     direction: tuple[int] = (1,),
     *,
-    n_repeats: int = 10,
+    n_repeats: int = 1,
 ) -> ValueList[_AX0Inv]:
     isf_data = np.zeros(times.n, dtype=np.complex128)
     # Convert the operator to the hamiltonian basis
@@ -205,37 +235,19 @@ def get_boltzmann_isf(
     times: _AX0Inv,
     direction: tuple[int] = (1,),
     *,
-    n_repeats: int = 10,
-) -> ValueList[_AX0Inv]:
-    hamiltonian = get_hamiltonian(system, config)
-    return get_boltzmann_isf_from_hamiltonian(
-        hamiltonian,
-        config.temperature,
-        times,
-        direction,
-        n_repeats=n_repeats,
-    )
-
-
-def get_boltzmann_isf_stats(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    times: _AX0Inv,
-    direction: tuple[int] = (1,),
-    *,
-    average_over: int = 10,
+    n_repeats: int = 1,
 ) -> StatisticalValueList[_AX0Inv]:
-    isf_data = np.zeros((average_over, times.n), dtype=np.complex128)
+    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
 
-    for _i in range(average_over):
+    for i in range(n_repeats):
         state = _get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
             config.temperature,
         )
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
-        isf_data[_i, :] = data["data"]
+        isf_data[i, :] = data["data"]
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
     return {
@@ -243,6 +255,72 @@ def get_boltzmann_isf_stats(
         "basis": times,
         "standard_deviation": sd,
     }
+
+
+def fit_abs_isf_to_gaussian(
+    values: ValueList[_BT0],
+) -> GaussianFitData:
+    times = values["basis"]
+    xdata1 = BasisUtil(times).nx_points
+
+    ydata = get_measured_data(values["data"], "abs")
+
+    def gauss(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        a: float,
+        b: float,
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return a * np.exp(-1 * np.square(x / b) / 2)
+
+    parameters, covariance = curve_fit(gauss, xdata1, ydata)
+    fit_A = parameters[0]
+    fit_B = parameters[1]
+    dt = times.times[1]
+
+    return GaussianFitData(
+        fit_A,
+        np.sqrt(covariance[0][0]),
+        fit_B * dt,
+        np.sqrt(covariance[1][1]) * dt,
+    )
+
+
+def fit_abs_isf_to_double_gaussian(
+    values: ValueList[_BT0],
+) -> DoubleGaussianFitData:
+    times = values["basis"]
+    xdata1 = BasisUtil(times).nx_points
+
+    ydata = get_measured_data(values["data"], "abs")
+
+    def gauss(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        a1: float,
+        b1: float,
+        a2: float,
+        b2: float,
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return a1 * np.exp(-1 * np.square(x / b1) / 2) + a2 * np.exp(
+            -1 * np.square(x / b2) / 2,
+        )
+
+    parameters, covariance = curve_fit(gauss, xdata1, ydata)
+    fit_A1 = parameters[0]
+    fit_B1 = parameters[1]
+    fit_A2 = parameters[2]
+    fit_B2 = parameters[3]
+    dt = times.times[1]
+
+    return DoubleGaussianFitData(
+        fit_A1,
+        np.sqrt(covariance[0][0]),
+        fit_B1 * dt,
+        np.sqrt(covariance[1][1]) * dt,
+        fit_A2,
+        np.sqrt(covariance[2][2]),
+        fit_B2 * dt,
+        np.sqrt(covariance[3][3]) * dt,
+    )
 
 
 def truncate_value_list(
@@ -257,42 +335,64 @@ def truncate_value_list(
     }
 
 
+class MomentumBasis(FundamentalBasis[Any]):
+    def __init__(self, k_points: np.ndarray[Any, np.dtype[np.float64]]) -> None:
+        self._k_points = k_points
+        super().__init__(k_points.size)  # type: ignore
+
+    @property
+    def k_points(self) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return self._k_points
+
+
 def get_ak_data_1d(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    times: _AX0Inv,
     *,
-    n_points: int = 8,
-) -> tuple[
-    np.ndarray[tuple[int], np.dtype[np.float64]],
-    np.ndarray[tuple[int], np.dtype[np.float64]],
-]:
-    length = get_potential(system)["basis"].delta_x_stacked[0] * config.shape[0]
-    kpoints = config.shape[0] * config.resolution[0]
-    xdata = np.floor(np.linspace(int(kpoints / 10), int(kpoints * 0.45), n_points))
-    ydata = np.zeros(xdata.shape)
+    k_points: list[int] | None = None,
+) -> ValueList[MomentumBasis]:
+    mass_ratio = system.mass / atomic_mass
+    times = EvenlySpacedTimeBasis(100, 1, 0, 1.5e-14 * np.power(mass_ratio, 0.6))
+    length = get_potential(system, config)["basis"].delta_x_stacked[0]
+    if k_points is None:
+        xdata = (np.arange(int(config.shape[0] / 2)) * 2 + 1) * int(
+            config.resolution[0] / 2,
+        )
+    else:
+        xdata = k_points
+
+    ydata = np.zeros(len(xdata))
     hamiltonian = get_hamiltonian(system, config)
-    for i in range(n_points):
-        isf = get_boltzmann_isf_from_hamiltonian(
+    for i in range(len(xdata)):
+        isf = _get_boltzmann_isf_from_hamiltonian(
             hamiltonian,
             config.temperature,
             times,
             (xdata[i],),
-            n_repeats=20,
+            n_repeats=10,
         )
-        idx = times.n - 1
+
         data = np.abs(isf["data"])
-        for _i in range(times.n - 1):
-            if data[_i + 1] > data[_i]:
-                idx = _i
-                break
+
+        diff = np.diff(data)
+        positive_diff = diff > 0
+        index = np.argmax(positive_diff)
+        idx = times.n - 1 if positive_diff[index] == 0 else index
+
         truncated_isf = truncate_value_list(isf, idx)
-        ydata[i] = 1 / get_gaussian_fit(truncated_isf)[2]
+        ydata[i] = 1 / fit_abs_isf_to_gaussian(truncated_isf).sd
         times = EvenlySpacedTimeBasis(
             times.n,
             times.step,
             times.offset,
-            times.times[idx] * 1.2,
+            times.times[idx],
         )
-    xdata = xdata * 2 * np.pi / length
-    return (xdata, ydata)
+    xdata_scaled = np.array(xdata) * 2 * np.pi / length
+    basis = MomentumBasis(xdata_scaled)
+    return {
+        "data": ydata,
+        "basis": basis,
+    }
+
+
+_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
