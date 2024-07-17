@@ -28,7 +28,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 )
 from surface_potential_analysis.util.util import get_measured_data
 
-from coherent_rates.system import get_hamiltonian, get_potential
+from coherent_rates.system import get_hamiltonian
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -46,30 +46,6 @@ if TYPE_CHECKING:
     from coherent_rates.system import PeriodicSystem, PeriodicSystemConfig
 
 _AX0Inv = TypeVar("_AX0Inv", bound=EvenlySpacedTimeBasis[Any, Any, Any])
-
-
-@dataclass
-class GaussianFitData:
-    """Represents the parameters from a Gaussian fit."""
-
-    amplitude: float
-    amp_error: float
-    sd: float
-    sd_error: float
-
-
-@dataclass
-class DoubleGaussianFitData:
-    """Represents the parameters from a double Gaussian fit."""
-
-    amplitude1: float
-    amp1_error: float
-    sd1: float
-    sd1_error: float
-    amplitude2: float
-    amp2_error: float
-    sd2: float
-    sd2_error: float
 
 
 def _get_isf_pair_states_from_hamiltonian(
@@ -207,25 +183,27 @@ def _get_boltzmann_isf_from_hamiltonian(
     direction: tuple[int] = (1,),
     *,
     n_repeats: int = 1,
-) -> ValueList[_AX0Inv]:
-    isf_data = np.zeros(times.n, dtype=np.complex128)
+) -> StatisticalValueList[_AX0Inv]:
     # Convert the operator to the hamiltonian basis
     # to prevent conversion in each repeat
+    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
     operator = convert_operator_to_basis(
         get_periodic_x_operator(hamiltonian["basis"][0], direction),
         hamiltonian["basis"],
     )
-
-    for _i in range(n_repeats):
+    for i in range(n_repeats):
         state = _get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
             temperature,
         )
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
-        isf_data += data["data"]
+        isf_data[i, :] = data["data"]
+    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+    sd = np.std(isf_data, axis=0, dtype=np.complex128)
     return {
-        "data": isf_data / n_repeats,
+        "data": mean,
         "basis": times,
+        "standard_deviation": sd,
     }
 
 
@@ -257,6 +235,19 @@ def get_boltzmann_isf(
     }
 
 
+@dataclass
+class GaussianFitData:
+    """Represents the parameters from a Gaussian fit."""
+
+    amplitude: float
+    amplitude_error: float
+    width: float
+    width_error: float
+
+
+_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
+
+
 def fit_abs_isf_to_gaussian(
     values: ValueList[_BT0],
 ) -> GaussianFitData:
@@ -283,6 +274,13 @@ def fit_abs_isf_to_gaussian(
         fit_B * dt,
         np.sqrt(covariance[1][1]) * dt,
     )
+
+
+@dataclass
+class DoubleGaussianFitData:
+    """Represents the parameters from a double Gaussian fit."""
+
+    parameters: tuple[GaussianFitData, GaussianFitData]
 
 
 def fit_abs_isf_to_double_gaussian(
@@ -312,14 +310,20 @@ def fit_abs_isf_to_double_gaussian(
     dt = times.times[1]
 
     return DoubleGaussianFitData(
-        fit_A1,
-        np.sqrt(covariance[0][0]),
-        fit_B1 * dt,
-        np.sqrt(covariance[1][1]) * dt,
-        fit_A2,
-        np.sqrt(covariance[2][2]),
-        fit_B2 * dt,
-        np.sqrt(covariance[3][3]) * dt,
+        (
+            GaussianFitData(
+                fit_A1,
+                np.sqrt(covariance[0][0]),
+                fit_B1 * dt,
+                np.sqrt(covariance[1][1]) * dt,
+            ),
+            GaussianFitData(
+                fit_A2,
+                np.sqrt(covariance[2][2]),
+                fit_B2 * dt,
+                np.sqrt(covariance[3][3]) * dt,
+            ),
+        ),
     )
 
 
@@ -349,26 +353,28 @@ def get_ak_data_1d(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
-    k_points: list[int] | None = None,
+    nk_points: list[int] | None = None,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> ValueList[MomentumBasis]:
     mass_ratio = system.mass / atomic_mass
-    times = EvenlySpacedTimeBasis(100, 1, 0, 1.5e-14 * np.power(mass_ratio, 0.6))
-    length = get_potential(system, config)["basis"].delta_x_stacked[0]
-    if k_points is None:
-        xdata = (np.arange(int(config.shape[0] / 2)) * 2 + 1) * int(
-            config.resolution[0] / 2,
-        )
-    else:
-        xdata = k_points
-
-    ydata = np.zeros(len(xdata))
+    times = (
+        EvenlySpacedTimeBasis(100, 1, 0, 1.5e-14 * np.power(mass_ratio, 0.6))
+        if times is None
+        else times
+    )
+    k_points = (
+        (config.shape[0] * np.arange(1, config.resolution[0]))
+        if nk_points is None
+        else nk_points
+    )
+    rates = np.zeros(len(k_points))
     hamiltonian = get_hamiltonian(system, config)
-    for i in range(len(xdata)):
+    for i in range(len(k_points)):
         isf = _get_boltzmann_isf_from_hamiltonian(
             hamiltonian,
             config.temperature,
             times,
-            (xdata[i],),
+            (k_points[i],),
             n_repeats=10,
         )
 
@@ -380,19 +386,43 @@ def get_ak_data_1d(
         idx = times.n - 1 if positive_diff[index] == 0 else index
 
         truncated_isf = truncate_value_list(isf, idx)
-        ydata[i] = 1 / fit_abs_isf_to_gaussian(truncated_isf).sd
+        rates[i] = 1 / fit_abs_isf_to_gaussian(truncated_isf).width
         times = EvenlySpacedTimeBasis(
             times.n,
             times.step,
             times.offset,
             times.times[idx],
         )
-    xdata_scaled = np.array(xdata) * 2 * np.pi / length
-    basis = MomentumBasis(xdata_scaled)
+    k_points = np.array(k_points) * BasisUtil(hamiltonian["basis"][0]).dk_stacked[0]
+    basis = MomentumBasis(k_points)
     return {
-        "data": ydata,
+        "data": rates,
         "basis": basis,
     }
 
 
-_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
+def calculate_effective_mass_from_gradient(
+    config: PeriodicSystemConfig,
+    gradient: float,
+) -> float:
+    return Boltzmann * config.temperature / (gradient * gradient)
+
+
+@dataclass
+class AlphaDeltakFitData:
+    """_Stores data from linear fit with calculated effective mass."""
+
+    gradient: float
+    intercept: float
+    effective_mass: float
+
+
+def get_alpha_deltak_linear_fit(
+    config: PeriodicSystemConfig,
+    values: ValueList[MomentumBasis],
+) -> AlphaDeltakFitData:
+    k_points = values["basis"].k_points
+    rates = values["data"]
+    gradient, intercept = np.polyfit(k_points, rates, 1)
+    effective_mass = calculate_effective_mass_from_gradient(config, gradient)
+    return AlphaDeltakFitData(gradient, intercept, effective_mass)
