@@ -25,10 +25,7 @@ from surface_potential_analysis.basis.stacked_basis import (
 from surface_potential_analysis.basis.time_basis_like import (
     EvenlySpacedTimeBasis,
 )
-from surface_potential_analysis.basis.util import (
-    get_displacements_x,
-    get_twice_average_nx,
-)
+from surface_potential_analysis.basis.util import get_displacements_x
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -99,6 +96,7 @@ HYDROGEN_NICKEL_SYSTEM = PeriodicSystem(
     lattice_constant=2.46e-10 / np.sqrt(2),
     mass=1.67e-27,
 )
+
 
 SODIUM_COPPER_SYSTEM = PeriodicSystem(
     id="NaCu",

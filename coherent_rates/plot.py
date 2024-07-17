@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from matplotlib import pyplot as plt
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
 from surface_potential_analysis.state_vector.plot import (
@@ -16,8 +17,14 @@ from surface_potential_analysis.state_vector.plot_value_list import (
 from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
+from surface_potential_analysis.util.plot import get_figure
 
-from coherent_rates.isf import get_boltzmann_isf, get_isf_pair_states
+from coherent_rates.isf import (
+    get_ak_data_1d,
+    get_alpha_deltak_linear_fit,
+    get_boltzmann_isf,
+    get_isf_pair_states,
+)
 from coherent_rates.system import (
     PeriodicSystem,
     PeriodicSystemConfig,
@@ -132,5 +139,49 @@ def plot_boltzmann_isf(
     ax.set_ylabel("ISF")
     ax.legend()
 
+    fig.show()
+    input()
+
+
+def plot_alpha_deltak(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    nk_points: list[int] | None = None,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
+) -> None:
+    bound_data = get_ak_data_1d(system, config, nk_points=nk_points, times=times)
+    k_points = bound_data["basis"].k_points
+    bound_fit = get_alpha_deltak_linear_fit(config, bound_data)
+    xfit = np.array([0, k_points[len(k_points) - 1] * 1.2])
+    yfit = bound_fit.gradient * xfit + bound_fit.intercept
+    fig, ax = get_figure(None)
+
+    ax.plot(k_points, bound_data["data"], "bo", label="Bound")
+    ax.plot(xfit, yfit, "b")
+
+    free_system = PeriodicSystem(
+        id=system.id,
+        barrier_energy=0,
+        lattice_constant=system.lattice_constant,
+        mass=system.mass,
+    )
+    free_data = get_ak_data_1d(free_system, config, nk_points=nk_points, times=times)
+    k_points_free = free_data["basis"].k_points
+    free_fit = get_alpha_deltak_linear_fit(config, free_data)
+
+    xfit1 = np.array([0, k_points_free[len(k_points_free) - 1] * 1.2])
+    yfit1 = free_fit.gradient * xfit1 + free_fit.effective_mass
+
+    ax.plot(k_points_free, free_data["data"], "ro", label="Free")
+    ax.plot(xfit1, yfit1, "r")
+    print(
+        "Bound mass =",
+        bound_fit.effective_mass,
+        "Free mass =",
+        free_fit.effective_mass,
+    )
+    ax.set_ylim(0, ax.get_ylim()[1])
+    ax.set_xlim(0, ax.get_xlim()[1])
     fig.show()
     input()
