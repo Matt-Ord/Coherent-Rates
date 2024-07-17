@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from matplotlib import pyplot as plt
+from scipy.constants import Boltzmann
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
@@ -20,8 +22,8 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 from surface_potential_analysis.util.plot import get_figure
 
 from coherent_rates.isf import (
+    MomentumBasis,
     get_ak_data_1d,
-    get_alpha_deltak_linear_fit,
     get_boltzmann_isf,
     get_isf_pair_states,
 )
@@ -34,10 +36,13 @@ from coherent_rates.system import (
 )
 
 if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
     from surface_potential_analysis.basis.stacked_basis import (
         StackedBasisWithVolumeLike,
     )
     from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+    from surface_potential_analysis.state_vector.eigenstate_collection import ValueList
     from surface_potential_analysis.state_vector.state_vector import StateVector
 
 
@@ -143,22 +148,58 @@ def plot_boltzmann_isf(
     input()
 
 
-def plot_alpha_deltak(
+def _calculate_effective_mass_from_gradient(
+    temperature: float,
+    gradient: float,
+) -> float:
+    return Boltzmann * temperature / (gradient * gradient)
+
+
+@dataclass
+class _AlphaDeltakFitData:
+    """_Stores data from linear fit with calculated effective mass."""
+
+    gradient: float
+    intercept: float
+
+
+def _get_alpha_deltak_linear_fit(
+    values: ValueList[MomentumBasis],
+) -> _AlphaDeltakFitData:
+    k_points = values["basis"].k_points
+    rates = values["data"]
+    gradient, intercept = np.polyfit(k_points, rates, 1)
+    return _AlphaDeltakFitData(gradient, intercept)
+
+
+def _plot_alpha_deltak(
+    data: ValueList[MomentumBasis],
+    *,
+    ax: Axes | None = None,
+) -> tuple[Figure, Axes]:
+    k_points = data["basis"].k_points
+
+    fig, ax = get_figure(ax)
+
+    ax.plot(k_points, data["data"], "bo", label="Bound")
+
+    fit = _get_alpha_deltak_linear_fit(data)
+    xfit = np.array([0, k_points[len(k_points) - 1] * 1.2])
+    yfit = fit.gradient * xfit + fit.intercept
+    ax.plot(xfit, yfit, "b")
+
+    return fig, ax
+
+
+def plot_alpha_deltak_comparison(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
     nk_points: list[int] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
-    bound_data = get_ak_data_1d(system, config, nk_points=nk_points, times=times)
-    k_points = bound_data["basis"].k_points
-    bound_fit = get_alpha_deltak_linear_fit(config, bound_data)
-    xfit = np.array([0, k_points[len(k_points) - 1] * 1.2])
-    yfit = bound_fit.gradient * xfit + bound_fit.intercept
-    fig, ax = get_figure(None)
-
-    ax.plot(k_points, bound_data["data"], "bo", label="Bound")
-    ax.plot(xfit, yfit, "b")
+    data = get_ak_data_1d(system, config, nk_points=nk_points, times=times)
+    fig, ax = _plot_alpha_deltak(data)
 
     free_system = PeriodicSystem(
         id=system.id,
@@ -167,21 +208,23 @@ def plot_alpha_deltak(
         mass=system.mass,
     )
     free_data = get_ak_data_1d(free_system, config, nk_points=nk_points, times=times)
-    k_points_free = free_data["basis"].k_points
-    free_fit = get_alpha_deltak_linear_fit(config, free_data)
+    _, _ = _plot_alpha_deltak(free_data, ax=ax)
 
-    xfit1 = np.array([0, k_points_free[len(k_points_free) - 1] * 1.2])
-    yfit1 = free_fit.gradient * xfit1 + free_fit.effective_mass
-
-    ax.plot(k_points_free, free_data["data"], "ro", label="Free")
-    ax.plot(xfit1, yfit1, "r")
-    print(
-        "Bound mass =",
-        bound_fit.effective_mass,
-        "Free mass =",
-        free_fit.effective_mass,
-    )
     ax.set_ylim(0, ax.get_ylim()[1])
     ax.set_xlim(0, ax.get_xlim()[1])
+
+    print(  # noqa: T201
+        "Bound mass =",
+        _calculate_effective_mass_from_gradient(
+            config.temperature,
+            _get_alpha_deltak_linear_fit(data).gradient,
+        ),
+        "Free mass =",
+        _calculate_effective_mass_from_gradient(
+            config.temperature,
+            _get_alpha_deltak_linear_fit(free_data).gradient,
+        ),
+    )
+
     fig.show()
     input()
