@@ -152,7 +152,7 @@ def _calculate_effective_mass_from_gradient(
     temperature: float,
     gradient: float,
 ) -> float:
-    return Boltzmann * temperature / (gradient * gradient)
+    return Boltzmann * temperature / (gradient**2)
 
 
 @dataclass
