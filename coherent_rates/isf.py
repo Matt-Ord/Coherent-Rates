@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
@@ -26,6 +27,7 @@ from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
+from surface_potential_analysis.util.decorators import npy_cached_dict
 from surface_potential_analysis.util.util import get_measured_data
 
 from coherent_rates.system import get_hamiltonian
@@ -333,6 +335,17 @@ class MomentumBasis(FundamentalBasis[Any]):
         return self._k_points
 
 
+def _get_ak_data_1d_path(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    nk_points: list[int] | None = None,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
+) -> Path:
+    return Path(f"data/{hash((system, config))}.{hash(nk_points)}.npz")
+
+
+@npy_cached_dict(_get_ak_data_1d_path, load_pickle=True)
 def get_ak_data_1d(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Self, TypeVar
 
 import numpy as np
 from scipy.constants import Boltzmann, electron_volt, hbar
@@ -79,6 +79,9 @@ class PeriodicSystem:
     lattice_constant: float
     mass: float
 
+    def __hash__(self: Self) -> int:  # noqa: D105
+        return hash((self.id, self.barrier_energy, self.lattice_constant, self.mass))
+
 
 @dataclass
 class PeriodicSystemConfig:
@@ -88,6 +91,9 @@ class PeriodicSystemConfig:
     resolution: tuple[int]
     n_bands: int
     temperature: float
+
+    def __hash__(self: Self) -> int:  # noqa: D105
+        return hash((self.shape, self.resolution, self.n_bands, self.temperature))
 
 
 HYDROGEN_NICKEL_SYSTEM = PeriodicSystem(
