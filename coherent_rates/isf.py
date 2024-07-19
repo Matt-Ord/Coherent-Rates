@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann, atomic_mass
+from scipy.constants import Boltzmann
 from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.basis import FundamentalBasis
 from surface_potential_analysis.basis.time_basis_like import (
@@ -30,7 +30,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 from surface_potential_analysis.util.decorators import npy_cached_dict
 from surface_potential_analysis.util.util import get_measured_data
 
-from coherent_rates.system import get_hamiltonian
+from coherent_rates.system import get_hamiltonian, get_potential
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -345,6 +345,16 @@ def _get_ak_data_1d_path(
     return Path(f"data/{hash((system, config))}.{hash(nk_points)}.npz")
 
 
+def get_free_particle_time(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    n_k: int,
+) -> float:
+    basis = get_potential(system, config)["basis"]
+    k = n_k * BasisUtil(basis).dk_stacked[0]
+    return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
+
+
 @npy_cached_dict(_get_ak_data_1d_path, load_pickle=True)
 def get_ak_data_1d(
     system: PeriodicSystem,
@@ -353,17 +363,23 @@ def get_ak_data_1d(
     nk_points: list[int] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> ValueList[MomentumBasis]:
-    mass_ratio = system.mass / atomic_mass
-    times = (
-        EvenlySpacedTimeBasis(100, 1, 0, 1.5e-14 * np.power(mass_ratio, 0.6))
-        if times is None
-        else times
-    )
     nk_points = (
         cast(list[int], (config.shape[0] * np.arange(1, config.resolution[0])).tolist())
         if nk_points is None
         else nk_points
     )
+    free_time = get_free_particle_time(system, config, nk_points[0])
+    times = (
+        EvenlySpacedTimeBasis(
+            100,
+            1,
+            0,
+            4 * free_time,
+        )
+        if times is None
+        else times
+    )
+
     rates = np.zeros(len(nk_points), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     for i in range(len(nk_points)):
