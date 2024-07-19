@@ -20,6 +20,12 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
 from surface_potential_analysis.util.plot import get_figure
+from surface_potential_analysis.wavepacket.plot import (
+    plot_wavepacket_eigenvalues_1d_k,
+    plot_wavepacket_eigenvalues_1d_x,
+    plot_wavepacket_transformed_energy_1d,
+    plot_wavepacket_transformed_energy_effective_mass_1d,
+)
 
 from coherent_rates.isf import (
     MomentumBasis,
@@ -30,6 +36,7 @@ from coherent_rates.isf import (
 from coherent_rates.system import (
     PeriodicSystem,
     PeriodicSystemConfig,
+    get_bloch_wavefunctions,
     get_hamiltonian,
     get_potential,
     solve_schrodinger_equation,
@@ -42,8 +49,8 @@ if TYPE_CHECKING:
         StackedBasisWithVolumeLike,
     )
     from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-    from surface_potential_analysis.state_vector.eigenstate_collection import ValueList
     from surface_potential_analysis.state_vector.state_vector import StateVector
+    from surface_potential_analysis.state_vector.state_vector_list import ValueList
 
 
 def plot_system_eigenstates(
@@ -66,6 +73,34 @@ def plot_system_eigenstates(
 
     fig.show()
     fig2.show()
+    input()
+
+
+def plot_system_bands(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> None:
+    """Plot the potential against position."""
+    wavefunctions = get_bloch_wavefunctions(system, config)
+
+    fig, _ = plot_wavepacket_eigenvalues_1d_k(wavefunctions)
+    fig.show()
+
+    fig, _ = plot_wavepacket_eigenvalues_1d_x(wavefunctions)
+    fig.show()
+
+    fig, ax, _ = plot_wavepacket_transformed_energy_1d(
+        wavefunctions,
+        free_mass=system.mass,
+        measure="abs",
+    )
+    ax.legend()
+    fig.show()
+
+    fig, _, _ = plot_wavepacket_transformed_energy_effective_mass_1d(
+        wavefunctions,
+    )
+    fig.show()
     input()
 
 
@@ -184,9 +219,9 @@ def _plot_alpha_deltak(
     ax.plot(k_points, data["data"], "bo", label="Bound")
 
     fit = _get_alpha_deltak_linear_fit(data)
-    xfit = np.array([0, k_points[len(k_points) - 1] * 1.2])
-    yfit = fit.gradient * xfit + fit.intercept
-    ax.plot(xfit, yfit, "b")
+    x_fit = np.array([0, k_points[len(k_points) - 1] * 1.2], dtype=np.float64)
+    y_fit = fit.gradient * x_fit + fit.intercept
+    ax.plot(x_fit, y_fit, "b")
 
     return fig, ax
 

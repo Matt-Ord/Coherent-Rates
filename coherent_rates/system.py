@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any, Literal, Self, TypeVar
 import numpy as np
 from scipy.constants import Boltzmann, electron_volt, hbar
 from surface_potential_analysis.basis.basis import (
-    FundamentalBasis,
     FundamentalPositionBasis,
+    FundamentalTransformedBasis,
     FundamentalTransformedPositionBasis,
     FundamentalTransformedPositionBasis1d,
     TransformedPositionBasis1d,
@@ -37,7 +37,7 @@ from surface_potential_analysis.potential.conversion import (
     convert_potential_to_position_basis,
 )
 from surface_potential_analysis.stacked_basis.build import (
-    fundamental_stacked_basis_from_shape,
+    fundamental_transformed_stacked_basis_from_shape,
 )
 from surface_potential_analysis.stacked_basis.conversion import (
     stacked_basis_as_fundamental_momentum_basis,
@@ -207,7 +207,7 @@ def get_bloch_wavefunctions(
     config: PeriodicSystemConfig,
 ) -> BlochWavefunctionListWithEigenvaluesList[
     EvenlySpacedBasis[int, int, int],
-    TupleBasisLike[FundamentalBasis[int]],
+    TupleBasisLike[FundamentalTransformedBasis[int]],
     StackedBasisWithVolumeLike[Any, Any, Any],
 ]:
     def hamiltonian_generator(
@@ -222,8 +222,8 @@ def get_bloch_wavefunctions(
 
     return generate_wavepacket(
         hamiltonian_generator,
-        save_bands=EvenlySpacedBasis(config.n_bands, 1, 0),
-        list_basis=fundamental_stacked_basis_from_shape(config.shape),
+        band_basis=EvenlySpacedBasis(config.n_bands, 1, 0),
+        list_basis=fundamental_transformed_stacked_basis_from_shape(config.shape),
     )
 
 
