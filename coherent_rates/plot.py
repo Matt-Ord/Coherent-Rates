@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.constants import Boltzmann
+from surface_potential_analysis.basis.basis_like import BasisLike
+from surface_potential_analysis.basis.stacked_basis import (
+    StackedBasisLike,
+    StackedBasisWithVolumeLike,
+)
+from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
@@ -14,13 +20,16 @@ from surface_potential_analysis.state_vector.plot import (
     plot_state_1d_x,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
+    plot_value_list_against_nx,
     plot_value_list_against_time,
 )
 from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
-from surface_potential_analysis.util.plot import get_figure
+from surface_potential_analysis.util.plot import Scale, get_figure
 from surface_potential_analysis.wavepacket.plot import (
+    get_wavepacket_effective_mass,
+    plot_occupation_against_band,
     plot_wavepacket_eigenvalues_1d_k,
     plot_wavepacket_eigenvalues_1d_x,
     plot_wavepacket_transformed_energy_1d,
@@ -31,6 +40,7 @@ from coherent_rates.isf import (
     MomentumBasis,
     get_ak_data_1d,
     get_boltzmann_isf,
+    get_free_particle_time,
     get_isf_pair_states,
 )
 from coherent_rates.system import (
@@ -45,12 +55,13 @@ from coherent_rates.system import (
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
-    from surface_potential_analysis.basis.stacked_basis import (
-        StackedBasisWithVolumeLike,
-    )
-    from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+    from matplotlib.lines import Line2D
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
+    from surface_potential_analysis.util.util import Measure
+    from surface_potential_analysis.wavepacket.wavepacket import (
+        BlochWavefunctionListWithEigenvaluesList,
+    )
 
 
 def plot_system_eigenstates(
@@ -76,11 +87,81 @@ def plot_system_eigenstates(
     input()
 
 
+_B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
+
+
+def _get_effective_mass_rates(
+    mass: ValueList[_B0],
+    temperature: float,
+) -> ValueList[_B0]:
+    """Calculate classical rate using equipartition of energies.
+
+    sigma = sqrt(2 m) / (delta_k * sqrt(2 k t))
+    rate = sqrt(kt / m) * delta_k
+
+    The rate given here is in units of scattered k (= sqrt(kt / m))
+    """
+    return {
+        "basis": mass["basis"],
+        "data": np.sqrt(Boltzmann * temperature / mass["data"]),
+    }
+
+
+_SB0 = TypeVar("_SB0", bound=StackedBasisLike[Any, Any, Any])
+_SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
+
+
+def plot_wavepacket_transformed_energy_rate(  # noqa: PLR0913
+    wavepacket: BlochWavefunctionListWithEigenvaluesList[
+        _B0,
+        _SB0,
+        _SBV0,
+    ],
+    temperature: float,
+    axes: tuple[int,] = (0,),
+    *,
+    ax: Axes | None = None,
+    scale: Scale = "linear",
+    measure: Measure = "real",
+) -> tuple[Figure, Axes, Line2D]:
+    """Plot the energy of the eigenstates in a wavepacket.
+
+    Parameters
+    ----------
+    wavepacket : Wavepacket[_NS0Inv, _NS1Inv, TupleBasisLike[tuple[_A3d0Inv, _A3d1Inv, _A3d2Inv]]
+    ax : Axes | None, optional
+        plot axis, by default None
+    scale : Literal[&quot;symlog&quot;, &quot;linear&quot;], optional
+        scale, by default "linear"
+
+    Returns
+    -------
+    tuple[Figure, Axes, QuadMesh]
+
+    """
+    fig, ax, line = plot_value_list_against_nx(
+        _get_effective_mass_rates(
+            get_wavepacket_effective_mass(wavepacket, axes[0]),
+            temperature,
+        ),
+        ax=ax,
+        scale=scale,
+        measure=measure,
+    )
+    line.set_label("Thermal Rate")
+
+    ax.set_xlabel("Band Index")
+    ax.set_ylabel("Rate / s^-1")
+    ax.set_ylim([0, ax.get_ylim()[1]])
+
+    return fig, ax, line
+
+
 def plot_system_bands(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> None:
-    """Plot the potential against position."""
+    """Investigate the Bandstructure of a system."""
     wavefunctions = get_bloch_wavefunctions(system, config)
 
     fig, _ = plot_wavepacket_eigenvalues_1d_k(wavefunctions)
@@ -100,6 +181,19 @@ def plot_system_bands(
     fig, _, _ = plot_wavepacket_transformed_energy_effective_mass_1d(
         wavefunctions,
     )
+    fig.show()
+
+    fig, ax, line0 = plot_wavepacket_transformed_energy_rate(
+        wavefunctions,
+        config.temperature,
+    )
+    _, _, line1 = plot_occupation_against_band(
+        wavefunctions,
+        config.temperature,
+        ax=ax.twinx(),
+    )
+    line1.set_color("C1")
+    ax.legend(handles=[line0, line1])
     fig.show()
     input()
 
@@ -155,11 +249,21 @@ def plot_pair_system_evolution(
 def plot_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    times: EvenlySpacedTimeBasis[Any, Any, Any],
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
     direction: tuple[int] = (1,),
     *,
     n_repeats: int = 10,
 ) -> None:
+    times = (
+        EvenlySpacedTimeBasis(
+            100,
+            1,
+            0,
+            4 * get_free_particle_time(system, config, direction[0]),
+        )
+        if times is None
+        else times
+    )
     data = get_boltzmann_isf(
         system,
         config,
