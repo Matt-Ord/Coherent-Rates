@@ -26,6 +26,7 @@ from surface_potential_analysis.state_vector.plot import (
     plot_state_2d_x,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
+    plot_split_value_list_against_time,
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
@@ -46,6 +47,7 @@ from surface_potential_analysis.wavepacket.plot import (
 from coherent_rates.isf import (
     MomentumBasis,
     get_ak_data,
+    get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
     get_free_particle_time,
     get_isf_pair_states,
@@ -241,7 +243,7 @@ def plot_system_eigenstates_2d(
 def plot_system_evolution_1d(
     system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[Any],
+    initial_state: StateVector[_B0],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
     potential = system.get_potential(config.shape, config.resolution)
@@ -273,7 +275,7 @@ def plot_system_evolution_2d(
 def plot_pair_system_evolution_1d(
     system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[StackedBasisWithVolumeLike[Any, Any, Any]],
+    initial_state: StateVector[_SBV0],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
     *,
@@ -318,6 +320,19 @@ def plot_pair_system_evolution_1d(
     input()
 
 
+def _get_default_times(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    direction: tuple[int, ...] = (1,),
+) -> EvenlySpacedTimeBasis[Any, Any, Any]:
+    return EvenlySpacedTimeBasis(
+        100,
+        1,
+        0,
+        4 * get_free_particle_time(system, config, direction),
+    )
+
+
 def plot_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
@@ -328,16 +343,8 @@ def plot_boltzmann_isf(
     measure: Measure | None = None,
 ) -> None:
     direction = tuple(1 for _ in config.shape) if direction is None else direction
-    times = (
-        EvenlySpacedTimeBasis(
-            100,
-            1,
-            0,
-            4 * get_free_particle_time(system, config, direction),
-        )
-        if times is None
-        else times
-    )
+
+    times = _get_default_times(system, config, direction) if times is None else times
     data = get_boltzmann_isf(
         system,
         config,
@@ -358,6 +365,28 @@ def plot_boltzmann_isf(
     else:
         fig, ax, line = plot_value_list_against_time(data, measure=measure)
     ax.set_ylabel("ISF")
+
+    fig.show()
+
+
+def plot_band_resolved_boltzmann_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
+    direction: tuple[int] = (1,),
+    *,
+    n_repeats: int = 10,
+) -> None:
+    times = _get_default_times(system, config, direction) if times is None else times
+
+    resolved_data = get_band_resolved_boltzmann_isf(
+        system,
+        config,
+        times,
+        direction,
+        n_repeats=n_repeats,
+    )
+    fig, _ = plot_split_value_list_against_time(resolved_data, measure="real")
 
     fig.show()
     input()
