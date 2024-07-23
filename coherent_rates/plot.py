@@ -12,18 +12,24 @@ from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
 )
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.potential.plot import plot_potential_1d_x
+from surface_potential_analysis.potential.plot import (
+    plot_potential_1d_x,
+    plot_potential_2d_x,
+)
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
     plot_state_1d_k,
     plot_state_1d_x,
+    plot_state_2d_k,
+    plot_state_2d_x,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
 from surface_potential_analysis.state_vector.state_vector_list import (
+    get_state_vector,
     state_vector_list_into_iter,
 )
 from surface_potential_analysis.util.plot import Scale, get_figure
@@ -46,10 +52,13 @@ from coherent_rates.isf import (
 )
 from coherent_rates.system import (
     PeriodicSystem,
+    PeriodicSystem1D,
+    PeriodicSystem2D,
     PeriodicSystemConfig,
     get_bloch_wavefunctions,
     get_hamiltonian,
-    get_potential,
+    get_potential_1d,
+    get_potential_2d,
     solve_schrodinger_equation,
 )
 
@@ -59,18 +68,19 @@ if TYPE_CHECKING:
     from matplotlib.lines import Line2D
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
+    from surface_potential_analysis.types import SingleFlatIndexLike
     from surface_potential_analysis.util.util import Measure
     from surface_potential_analysis.wavepacket.wavepacket import (
         BlochWavefunctionListWithEigenvaluesList,
     )
 
 
-def plot_system_eigenstates(
-    system: PeriodicSystem,
+def plot_system_eigenstates_1d(
+    system: PeriodicSystem1D,
     config: PeriodicSystemConfig,
 ) -> None:
     """Plot the potential against position."""
-    potential = get_potential(system, config)
+    potential = get_potential_1d(system, config.shape, config.resolution)
     fig, ax, _ = plot_potential_1d_x(potential)
 
     hamiltonian = get_hamiltonian(system, config)
@@ -199,13 +209,43 @@ def plot_system_bands(
     input()
 
 
-def plot_system_evolution(
-    system: PeriodicSystem,
+def plot_system_eigenstates_2d(
+    system: PeriodicSystem2D,
+    config: PeriodicSystemConfig,
+    index: SingleFlatIndexLike | None = None,
+) -> None:
+    """Plot the potential against position."""
+    potential = get_potential_2d(system, config.shape, config.resolution)
+    fig, ax, _ = plot_potential_2d_x(potential)
+    fig.show()
+
+    hamiltonian = get_hamiltonian(system, config)
+    eigenvectors = hamiltonian["basis"][0].vectors
+
+    if index is None:
+        for i in range(config.n_bands):
+            state = get_state_vector(eigenvectors, i)
+            fig, _ax, _line = plot_state_2d_x(state)
+            fig.show()
+            fig, _ax, _line = plot_state_2d_k(state)
+            fig.show()
+    else:
+        state = get_state_vector(eigenvectors, index)
+        fig, _ax, _line = plot_state_2d_x(state)
+        fig.show()
+        fig, _ax, _line = plot_state_2d_k(state)
+        fig.show()
+
+    input()
+
+
+def plot_system_evolution_1d(
+    system: PeriodicSystem1D,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
-    potential = get_potential(system, config)
+    potential = get_potential_1d(system, config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
@@ -217,14 +257,14 @@ def plot_system_evolution(
     input()
 
 
-def plot_pair_system_evolution(
-    system: PeriodicSystem,
+def plot_pair_system_evolution_1d(
+    system: PeriodicSystem1D,
     config: PeriodicSystemConfig,
     initial_state: StateVector[StackedBasisWithVolumeLike[Any, Any, Any]],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
 ) -> None:
-    potential = get_potential(system, config)
+    potential = get_potential_1d(system, config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
@@ -251,7 +291,7 @@ def plot_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] = (1,),
     *,
     n_repeats: int = 10,
 ) -> None:
@@ -332,7 +372,7 @@ def _plot_alpha_deltak(
 
 
 def plot_alpha_deltak_comparison(
-    system: PeriodicSystem,
+    system: PeriodicSystem1D,
     config: PeriodicSystemConfig,
     *,
     nk_points: list[int] | None = None,
@@ -341,12 +381,7 @@ def plot_alpha_deltak_comparison(
     data = get_ak_data_1d(system, config, nk_points=nk_points, times=times)
     fig, ax = _plot_alpha_deltak(data)
 
-    free_system = PeriodicSystem(
-        id=system.id,
-        barrier_energy=0,
-        lattice_constant=system.lattice_constant,
-        mass=system.mass,
-    )
+    free_system = system.as_free_system()
     free_data = get_ak_data_1d(free_system, config, nk_points=nk_points, times=times)
     _, _ = _plot_alpha_deltak(free_data, ax=ax)
 

@@ -35,7 +35,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 from surface_potential_analysis.util.decorators import npy_cached_dict
 from surface_potential_analysis.util.util import get_measured_data
 
-from coherent_rates.system import get_hamiltonian, get_potential
+from coherent_rates.system import PeriodicSystem1D, get_hamiltonian
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -75,6 +75,7 @@ def _get_isf_pair_states_from_hamiltonian(
         times,
         hamiltonian,
     )
+
     return (state_evolved_scattered, state_scattered_evolved)
 
 
@@ -83,7 +84,7 @@ def get_isf_pair_states(
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] = (1,),
 ) -> tuple[StateVectorList[_AX0Inv, Any], StateVectorList[_AX0Inv, Any]]:
     operator = get_periodic_x_operator(
         initial_state["basis"],
@@ -113,7 +114,6 @@ def _get_isf_from_hamiltonian(
         initial_state,
         times,
     )
-
     return calculate_inner_products_elementwise(
         state_scattered_evolved,
         state_evolved_scattered,
@@ -125,7 +125,7 @@ def get_isf(
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] = (1,),
 ) -> ValueList[_AX0Inv]:
     operator = get_periodic_x_operator(
         initial_state["basis"],
@@ -187,7 +187,7 @@ def _get_boltzmann_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[Any],
     temperature: float,
     times: _AX0Inv,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] = (1,),
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[_AX0Inv]:
@@ -219,7 +219,7 @@ def get_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _AX0Inv,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] = (1,),
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[_AX0Inv]:
@@ -362,7 +362,7 @@ def get_free_particle_time(
 
 @npy_cached_dict(_get_ak_data_1d_path, load_pickle=True)
 def get_ak_data_1d(
-    system: PeriodicSystem,
+    system: PeriodicSystem1D,
     config: PeriodicSystemConfig,
     *,
     nk_points: list[int] | None = None,
