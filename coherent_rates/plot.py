@@ -44,7 +44,7 @@ from surface_potential_analysis.wavepacket.plot import (
 
 from coherent_rates.isf import (
     MomentumBasis,
-    get_ak_data_1d,
+    get_ak_data,
     get_boltzmann_isf,
     get_free_particle_time,
     get_isf_pair_states,
@@ -291,16 +291,17 @@ def plot_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-    direction: tuple[int, ...] = (1,),
+    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 10,
 ) -> None:
+    direction = tuple(1 for _ in config.shape) if direction is None else direction
     times = (
         EvenlySpacedTimeBasis(
             100,
             1,
             0,
-            4 * get_free_particle_time(system, config, direction[0]),
+            4 * get_free_particle_time(system, config, direction),
         )
         if times is None
         else times
@@ -372,17 +373,17 @@ def _plot_alpha_deltak(
 
 
 def plot_alpha_deltak_comparison(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
-    nk_points: list[int] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
-    data = get_ak_data_1d(system, config, nk_points=nk_points, times=times)
+    data = get_ak_data(system, config, nk_points=nk_points, times=times)
     fig, ax = _plot_alpha_deltak(data)
 
     free_system = system.as_free_system()
-    free_data = get_ak_data_1d(free_system, config, nk_points=nk_points, times=times)
+    free_data = get_ak_data(free_system, config, nk_points=nk_points, times=times)
     _, _ = _plot_alpha_deltak(free_data, ax=ax)
 
     ax.set_ylim(0, ax.get_ylim()[1])

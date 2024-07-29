@@ -11,5 +11,5 @@ if __name__ == "__main__":
     system = SODIUM_COPPER_SYSTEM_1D
 
     times = EvenlySpacedTimeBasis(100, 1, 0, 4e-13)
-    k_points = [50, 75, 100, 125, 150, 175, 200]
+    k_points = [(50,), (75,), (100,), (125,), (150,), (175,), (200,)]
     plot_alpha_deltak_comparison(system, config, nk_points=k_points)

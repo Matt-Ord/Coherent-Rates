@@ -16,6 +16,6 @@ if __name__ == "__main__":
         100,
         1,
         0,
-        20 * get_free_particle_time(system, config, 1),
+        20 * get_free_particle_time(system, config, (1,)),
     )
     plot_boltzmann_isf(system, config, times, direction=(1,))
