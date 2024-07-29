@@ -330,24 +330,14 @@ def truncate_value_list(
     return {"basis": new_times, "data": data}
 
 
-class MomentumBasis(FundamentalBasis[Any]):
-    def __init__(self, k_points: np.ndarray[Any, np.dtype[np.float64]]) -> None:
+class MomentumBasis(FundamentalBasis[Any]):  # noqa: D101
+    def __init__(self, k_points: np.ndarray[Any, np.dtype[np.float64]]) -> None:  # noqa: D107, ANN101
         self._k_points = k_points
         super().__init__(k_points.size)
 
     @property
-    def k_points(self: Self) -> np.ndarray[Any, np.dtype[np.float64]]:
+    def k_points(self: Self) -> np.ndarray[Any, np.dtype[np.float64]]:  # noqa: D102
         return self._k_points
-
-
-def _get_ak_data_1d_path(
-    system: PeriodicSystem1D,
-    config: PeriodicSystemConfig,
-    *,
-    nk_points: list[int] | None = None,
-    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
-) -> Path:
-    return Path(f"data/{hash((system, config))}.{hash(nk_points)}.npz")
 
 
 def get_free_particle_time(
@@ -358,6 +348,16 @@ def get_free_particle_time(
     basis = system.potential(config.shape, config.resolution)["basis"]
     k = n_k * BasisUtil(basis).dk_stacked[0]
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
+
+
+def _get_ak_data_1d_path(
+    system: PeriodicSystem1D,
+    config: PeriodicSystemConfig,
+    *,
+    nk_points: list[int] | None = None,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
+) -> Path:
+    return Path(f"data/{hash((system, config))}.{hash(nk_points)}.npz")
 
 
 @npy_cached_dict(_get_ak_data_1d_path, load_pickle=True)
@@ -507,7 +507,7 @@ def get_ak_data_2d(
 
         diff = np.diff(data)
         positive_diff = diff > 0
-        index = np.argmax(positive_diff)
+        index = np.argmax(positive_diff).item()
         idx = times.n - 1 if positive_diff[index] == 0 else index
 
         truncated_isf = truncate_value_list(isf, idx)

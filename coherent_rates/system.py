@@ -26,7 +26,10 @@ from surface_potential_analysis.basis.stacked_basis import (
 from surface_potential_analysis.basis.time_basis_like import (
     EvenlySpacedTimeBasis,
 )
-from surface_potential_analysis.basis.util import get_displacements_x
+from surface_potential_analysis.basis.util import (
+    get_displacements_x,
+    get_twice_average_nx,
+)
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -126,15 +129,24 @@ class PeriodicSystem:
     def __hash__(self: Self) -> int:  # noqa: D105
         return hash((self.id, self.barrier_energy, self.lattice_constant, self.mass))
 
-    def get_fundamental_potential(self: Self) -> Potential[Any]:
+    def get_fundamental_potential(
+        self: Self,
+    ) -> Potential[
+        TupleBasisWithLengthLike[
+            *tuple[FundamentalTransformedPositionBasis[Any, Any], ...]
+        ]
+    ]:
         ...
 
     def potential(
         self: Self,
         shape: tuple[int, ...],
         resolution: tuple[int, ...],
-    ) -> Potential[Any]:
-        ...
+    ) -> Potential[StackedBasisWithVolumeLike[Any, Any, Any]]:
+        potential = self.get_fundamental_potential()
+        interpolated = _get_interpolated_potential(potential, resolution)
+
+        return _get_extrapolated_potential(interpolated, shape)
 
     def as_free_system(self: Self) -> PeriodicSystem:
         ...
@@ -152,13 +164,6 @@ class PeriodicSystem1D(PeriodicSystem):
     def as_free_system(self: Self) -> PeriodicSystem1D:
         return PeriodicSystem1D(self.id, 0, self.lattice_constant, self.mass)
 
-    def potential(
-        self: Self,
-        shape: tuple[int, ...],
-        resolution: tuple[int, ...],
-    ) -> Potential[Any]:
-        return get_potential_1d(self, shape, resolution)
-
 
 @dataclass
 class PeriodicSystem2D(PeriodicSystem):
@@ -174,13 +179,6 @@ class PeriodicSystem2D(PeriodicSystem):
 
     def as_free_system(self: Self) -> PeriodicSystem2D:
         return PeriodicSystem2D(self.id, 0, self.lattice_constant, self.mass)
-
-    def potential(
-        self: Self,
-        shape: tuple[int, ...],
-        resolution: tuple[int, ...],
-    ) -> Potential[Any]:
-        return get_potential_2d(self, shape, resolution)
 
 
 @dataclass
@@ -355,7 +353,7 @@ def get_bloch_wavefunctions(
     config: PeriodicSystemConfig,
 ) -> BlochWavefunctionListWithEigenvaluesList[
     EvenlySpacedBasis[int, int, int],
-    TupleBasisLike[FundamentalTransformedBasis[int]],
+    TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
     StackedBasisWithVolumeLike[Any, Any, Any],
 ]:
     def hamiltonian_generator(

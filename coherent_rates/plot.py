@@ -163,7 +163,7 @@ def plot_wavepacket_transformed_energy_rate(  # noqa: PLR0913
 
     ax.set_xlabel("Band Index")
     ax.set_ylabel("Rate / s^-1")
-    ax.set_ylim([0, ax.get_ylim()[1]])
+    ax.set_ylim((0.0, ax.get_ylim()[1]))
 
     return fig, ax, line
 
@@ -216,7 +216,7 @@ def plot_system_eigenstates_2d(
 ) -> None:
     """Plot the potential against position."""
     potential = get_potential_2d(system, config.shape, config.resolution)
-    fig, ax, _ = plot_potential_2d_x(potential)
+    fig, _, _ = plot_potential_2d_x(potential)
     fig.show()
 
     hamiltonian = get_hamiltonian(system, config)
