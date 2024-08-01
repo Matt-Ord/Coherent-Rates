@@ -152,7 +152,6 @@ class PeriodicSystem:
         ...
 
 
-@dataclass
 class PeriodicSystem1D(PeriodicSystem):
     """Represents the properties of a 1D Periodic System."""
 
@@ -165,7 +164,6 @@ class PeriodicSystem1D(PeriodicSystem):
         return PeriodicSystem1D(self.id, 0, self.lattice_constant, self.mass)
 
 
-@dataclass
 class PeriodicSystem2D(PeriodicSystem):
     def get_fundamental_potential(
         self: Self,

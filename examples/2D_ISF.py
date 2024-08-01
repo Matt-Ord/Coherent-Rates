@@ -5,24 +5,27 @@ from surface_potential_analysis.state_vector.plot_value_list import (
 )
 
 from coherent_rates.isf import get_boltzmann_isf, get_random_boltzmann_state
-from coherent_rates.plot import plot_alpha_deltak_comparison, plot_system_eigenstates_2d
+from coherent_rates.plot import (
+    plot_alpha_deltak_comparison,
+    plot_system_evolution_2d,
+)
 from coherent_rates.system import (
     HYDROGEN_NICKEL_SYSTEM_2D,
     PeriodicSystemConfig,
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((7, 7), (10, 10), 100, temperature=155)
+    config = PeriodicSystemConfig((5, 5), (10, 10), 100, temperature=155)
     system = HYDROGEN_NICKEL_SYSTEM_2D
-
-    plot_system_eigenstates_2d(system, config, 37)
+    times = EvenlySpacedTimeBasis(100, 1, 0, 5e-13)
+    # plot_system_eigenstates_2d(system, config, 0)
 
     state = get_random_boltzmann_state(system, config)
+    plot_system_evolution_2d(system, config, state, times)
     fig, ax, line = plot_state_2d_x(state)
     fig.show()
     input()
 
-    times = EvenlySpacedTimeBasis(100, 1, 0, 5e-13)
     n = (5, 5)
     isf = get_boltzmann_isf(system, config, times, n, n_repeats=10)
     fig, ax, line = plot_value_list_against_time(isf)

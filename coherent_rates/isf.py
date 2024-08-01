@@ -346,7 +346,8 @@ def get_free_particle_time(
     n_k: tuple[int, ...],
 ) -> float:
     basis = system.potential(config.shape, config.resolution)["basis"]
-    k = np.einsum("i,i->", n_k, BasisUtil(basis).dk_stacked)
+    dk_stacked = BasisUtil(basis).dk_stacked
+    k = np.linalg.norm(np.einsum("i,ij->j", n_k, dk_stacked))
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
 
 
@@ -368,7 +369,7 @@ def _get_ak_data_path(
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
 ) -> Path:
-    return Path(f"data/{hash((system, config))}.{hash(nk_points)}.npz")
+    return Path(f"data/{hash((system, config))}.{hash(nk_points[0])}.npz")
 
 
 @npy_cached_dict(_get_ak_data_path, load_pickle=True)
@@ -416,8 +417,7 @@ def get_ak_data(
             times.times[idx],
         )
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.einsum("ij,j->i", nk_points, dk_stacked)
-
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
     basis = MomentumBasis(k_points)
     return {"data": rates, "basis": basis}
 
@@ -512,3 +512,34 @@ def get_alpha_deltak_linear_fit(
     gradient, intercept = np.polyfit(k_points, rates, 1)
     effective_mass = calculate_effective_mass_from_gradient(config, gradient)
     return AlphaDeltakFitData(gradient, intercept, effective_mass)
+
+
+def get_ak_data_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    initial_state: StateVector[Any],
+    nk_points: list[tuple[int, ...]],
+    times: EvenlySpacedTimeBasis[Any, Any, Any],
+) -> ValueList[MomentumBasis]:
+    rates = np.zeros(len(nk_points), dtype=np.complex128)
+    hamiltonian = get_hamiltonian(system, config)
+    for i, nk_point in enumerate(nk_points):
+        isf = get_isf(system, config, initial_state, times, nk_point)
+
+        is_increasing = np.diff(np.abs(isf["data"])) > 0
+        first_increasing_idx = np.argmax(is_increasing).item()
+        idx = times.n - 1 if first_increasing_idx == 0 else first_increasing_idx
+
+        truncated_isf = truncate_value_list(isf, idx)
+        rates[i] = 1 / fit_abs_isf_to_gaussian(truncated_isf).width
+        times = EvenlySpacedTimeBasis(
+            times.n,
+            times.step,
+            times.offset,
+            times.times[idx],
+        )
+    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    k_points = np.einsum("ij,j...->i...", nk_points, dk_stacked)
+    points = k_points.reshape(len(rates))
+    basis = MomentumBasis(points)
+    return {"data": rates, "basis": basis}
