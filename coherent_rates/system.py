@@ -74,7 +74,7 @@ _L0Inv = TypeVar("_L0Inv", bound=int)
 
 
 def _get_fundamental_potential_1d(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
 ) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
     """Generate potential for a periodic 1D system."""
     delta_x = np.sqrt(3) * system.lattice_constant / 2
@@ -84,7 +84,7 @@ def _get_fundamental_potential_1d(
 
 
 def _get_fundamental_potential_2d(
-    system: PeriodicSystem2D,
+    system: PeriodicSystem2d,
 ) -> Potential[
     TupleBasis[
         FundamentalTransformedPositionBasis[Literal[3], Literal[2]],
@@ -114,111 +114,6 @@ def _get_fundamental_potential_2d(
         ),
         "data": vector.ravel(),
     }
-
-
-@dataclass
-class PeriodicSystem:
-    """Represents the properties of a Periodic System."""
-
-    id: str
-    """A unique ID, for use in caching"""
-    barrier_energy: float
-    lattice_constant: float
-    mass: float
-
-    def __hash__(self: Self) -> int:  # noqa: D105
-        return hash((self.id, self.barrier_energy, self.lattice_constant, self.mass))
-
-    def get_fundamental_potential(
-        self: Self,
-    ) -> Potential[
-        TupleBasisWithLengthLike[
-            *tuple[FundamentalTransformedPositionBasis[Any, Any], ...]
-        ]
-    ]:
-        ...
-
-    def potential(
-        self: Self,
-        shape: tuple[int, ...],
-        resolution: tuple[int, ...],
-    ) -> Potential[StackedBasisWithVolumeLike[Any, Any, Any]]:
-        potential = self.get_fundamental_potential()
-        interpolated = _get_interpolated_potential(potential, resolution)
-
-        return _get_extrapolated_potential(interpolated, shape)
-
-    def as_free_system(self: Self) -> PeriodicSystem:
-        ...
-
-
-class PeriodicSystem1D(PeriodicSystem):
-    """Represents the properties of a 1D Periodic System."""
-
-    def get_fundamental_potential(
-        self: Self,
-    ) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
-        return _get_fundamental_potential_1d(self)
-
-    def as_free_system(self: Self) -> PeriodicSystem1D:
-        return PeriodicSystem1D(self.id, 0, self.lattice_constant, self.mass)
-
-
-class PeriodicSystem2D(PeriodicSystem):
-    def get_fundamental_potential(
-        self: Self,
-    ) -> Potential[
-        TupleBasis[
-            FundamentalTransformedPositionBasis[Literal[3], Literal[2]],
-            FundamentalTransformedPositionBasis[Literal[3], Literal[2]],
-        ]
-    ]:
-        return _get_fundamental_potential_2d(self)
-
-    def as_free_system(self: Self) -> PeriodicSystem2D:
-        return PeriodicSystem2D(self.id, 0, self.lattice_constant, self.mass)
-
-
-@dataclass
-class PeriodicSystemConfig:
-    """Configure the simlation-specific detail of the system."""
-
-    shape: tuple[int, ...]
-    resolution: tuple[int, ...]
-    n_bands: int
-    temperature: float
-
-    def __hash__(self: Self) -> int:  # noqa: D105
-        return hash((self.shape, self.resolution, self.n_bands, self.temperature))
-
-
-HYDROGEN_NICKEL_SYSTEM_1D = PeriodicSystem1D(
-    id="HNi",
-    barrier_energy=2.5593864192e-20,
-    lattice_constant=2.46e-10 / np.sqrt(2),
-    mass=1.67e-27,
-)
-
-HYDROGEN_NICKEL_SYSTEM_2D = PeriodicSystem2D(
-    id="HNi",
-    barrier_energy=2.5593864192e-20,
-    lattice_constant=2.46e-10 / np.sqrt(2),
-    mass=1.67e-27,
-)
-
-SODIUM_COPPER_SYSTEM_1D = PeriodicSystem1D(
-    id="NaCu",
-    barrier_energy=55e-3 * electron_volt,
-    lattice_constant=3.615e-10,
-    mass=3.8175458e-26,
-)
-
-LITHIUM_COPPER_SYSTEM_1D = PeriodicSystem1D(
-    id="LiCu",
-    barrier_energy=45e-3 * electron_volt,
-    lattice_constant=3.615e-10,
-    mass=1.152414898e-26,
-)
 
 
 def _get_interpolated_potential(
@@ -289,8 +184,113 @@ def _get_extrapolated_potential(
     return {"basis": extrapolated_basis, "data": scaled_potential}
 
 
+@dataclass
+class PeriodicSystem:
+    """Represents the properties of a Periodic System."""
+
+    id: str
+    """A unique ID, for use in caching"""
+    barrier_energy: float
+    lattice_constant: float
+    mass: float
+
+    def __hash__(self: Self) -> int:  # noqa: D105
+        return hash((self.id, self.barrier_energy, self.lattice_constant, self.mass))
+
+    def get_fundamental_potential(
+        self: Self,
+    ) -> Potential[
+        TupleBasisWithLengthLike[
+            *tuple[FundamentalTransformedPositionBasis[Any, Any], ...]
+        ]
+    ]:
+        ...
+
+    def get_potential(
+        self: Self,
+        shape: tuple[int, ...],
+        resolution: tuple[int, ...],
+    ) -> Potential[StackedBasisWithVolumeLike[Any, Any, Any]]:
+        potential = self.get_fundamental_potential()
+        interpolated = _get_interpolated_potential(potential, resolution)
+
+        return _get_extrapolated_potential(interpolated, shape)
+
+    def as_free_system(self: Self) -> PeriodicSystem:
+        ...
+
+
+class PeriodicSystem1d(PeriodicSystem):
+    """Represents the properties of a 1D Periodic System."""
+
+    def get_fundamental_potential(
+        self: Self,
+    ) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
+        return _get_fundamental_potential_1d(self)
+
+    def as_free_system(self: Self) -> PeriodicSystem1d:
+        return PeriodicSystem1d(self.id, 0, self.lattice_constant, self.mass)
+
+
+class PeriodicSystem2d(PeriodicSystem):
+    def get_fundamental_potential(
+        self: Self,
+    ) -> Potential[
+        TupleBasis[
+            FundamentalTransformedPositionBasis[Literal[3], Literal[2]],
+            FundamentalTransformedPositionBasis[Literal[3], Literal[2]],
+        ]
+    ]:
+        return _get_fundamental_potential_2d(self)
+
+    def as_free_system(self: Self) -> PeriodicSystem2d:
+        return PeriodicSystem2d(self.id, 0, self.lattice_constant, self.mass)
+
+
+@dataclass
+class PeriodicSystemConfig:
+    """Configure the simlation-specific detail of the system."""
+
+    shape: tuple[int, ...]
+    resolution: tuple[int, ...]
+    n_bands: int
+    temperature: float
+
+    def __hash__(self: Self) -> int:  # noqa: D105
+        return hash((self.shape, self.resolution, self.n_bands, self.temperature))
+
+
+HYDROGEN_NICKEL_SYSTEM_1D = PeriodicSystem1d(
+    id="HNi",
+    barrier_energy=2.5593864192e-20,
+    lattice_constant=2.46e-10 / np.sqrt(2),
+    mass=1.67e-27,
+)
+
+HYDROGEN_NICKEL_SYSTEM_2D = PeriodicSystem2d(
+    id="HNi",
+    barrier_energy=2.5593864192e-20,
+    lattice_constant=2.46e-10 / np.sqrt(2),
+    mass=1.67e-27,
+)
+
+SODIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
+    id="NaCu",
+    barrier_energy=55e-3 * electron_volt,
+    lattice_constant=3.615e-10,
+    mass=3.8175458e-26,
+)
+
+LITHIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
+    id="LiCu",
+    barrier_energy=45e-3 * electron_volt,
+    lattice_constant=3.615e-10,
+    mass=1.152414898e-26,
+)
+
+
 def get_potential_1d(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
     shape: tuple[int, ...],
     resolution: tuple[int, ...],
 ) -> Potential[
@@ -305,7 +305,7 @@ def get_potential_1d(
 
 
 def get_potential_2d(
-    system: PeriodicSystem2D,
+    system: PeriodicSystem2d,
     shape: tuple[_L0Inv, ...],
     resolution: tuple[int, ...],
 ) -> Potential[
@@ -337,11 +337,11 @@ def _get_full_hamiltonian(
     TupleBasisWithLengthLike[*tuple[FundamentalPositionBasis[int, int], ...]],
 ]:
     bloch_fraction = np.array([0]) if bloch_fraction is None else bloch_fraction
-    potential = system.potential(shape, resolution)
+    potential = system.get_potential(shape, resolution)
 
     converted = convert_potential_to_basis(
         potential,
-        stacked_basis_as_fundamental_position_basis(potential["basis"]),
+        stacked_basis_as_fundamental_momentum_basis(potential["basis"]),
     )
     return total_surface_hamiltonian(converted, system.mass, bloch_fraction)
 
@@ -359,7 +359,7 @@ def get_bloch_wavefunctions(
     ) -> SingleBasisOperator[StackedBasisWithVolumeLike[Any, Any, Any]]:
         return _get_full_hamiltonian(
             system,
-            tuple(1 for _ in range(len(config.shape))),
+            tuple(1 for _ in config.shape),
             config.resolution,
             bloch_fraction=bloch_fraction,
         )
@@ -394,11 +394,11 @@ def solve_schrodinger_equation(
 
 
 def get_step_state_1d(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
     fraction: float | None,
 ) -> StateVector[TupleBasisWithLengthLike[FundamentalPositionBasis[Any, Literal[1]]]]:
-    potential = get_potential_1d(system, config.shape, config.resolution)
+    potential = system.get_potential(config.shape, config.resolution)
     basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
 
     initial_state: StateVector[Any] = {
@@ -412,11 +412,11 @@ def get_step_state_1d(
 
 
 def get_gaussian_state_1d(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
     fraction: float,
 ) -> StateVector[TupleBasisWithLengthLike[FundamentalPositionBasis[Any, Literal[1]]]]:
-    potential = get_potential_1d(system, config.shape, config.resolution)
+    potential = system.get_potential(config.shape, config.resolution)
     basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
 
     size = basis.n
@@ -440,7 +440,7 @@ def get_gaussian_state_1d(
 
 
 def get_cl_operator(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
 ) -> SingleBasisOperator[Any]:
     """Generate the operator for the stationary Caldeira-Leggett solution.
@@ -460,7 +460,7 @@ def get_cl_operator(
         SingleBasisOperator[Any]: _description_
 
     """
-    potential = get_potential_1d(system, config.shape, config.resolution)
+    potential = system.get_potential(config.shape, config.resolution)
 
     basis_x = stacked_basis_as_fundamental_position_basis(potential["basis"])
     converted_potential = convert_potential_to_position_basis(potential)

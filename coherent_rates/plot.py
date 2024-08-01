@@ -19,6 +19,7 @@ from surface_potential_analysis.potential.plot import (
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
+    animate_state_over_list_2d_x,
     plot_state_1d_k,
     plot_state_1d_x,
     plot_state_2d_k,
@@ -52,8 +53,8 @@ from coherent_rates.isf import (
 )
 from coherent_rates.system import (
     PeriodicSystem,
-    PeriodicSystem1D,
-    PeriodicSystem2D,
+    PeriodicSystem1d,
+    PeriodicSystem2d,
     PeriodicSystemConfig,
     get_bloch_wavefunctions,
     get_hamiltonian,
@@ -76,7 +77,7 @@ if TYPE_CHECKING:
 
 
 def plot_system_eigenstates_1d(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
 ) -> None:
     """Plot the potential against position."""
@@ -210,7 +211,7 @@ def plot_system_bands(
 
 
 def plot_system_eigenstates_2d(
-    system: PeriodicSystem2D,
+    system: PeriodicSystem2d,
     config: PeriodicSystemConfig,
     index: SingleFlatIndexLike | None = None,
 ) -> None:
@@ -240,7 +241,7 @@ def plot_system_eigenstates_2d(
 
 
 def plot_system_evolution_1d(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
@@ -257,12 +258,28 @@ def plot_system_evolution_1d(
     input()
 
 
+def plot_system_evolution_2d(
+    system: PeriodicSystem2d,
+    config: PeriodicSystemConfig,
+    initial_state: StateVector[Any],
+    times: EvenlySpacedTimeBasis[Any, Any, Any],
+) -> None:
+    states = solve_schrodinger_equation(system, config, initial_state, times)
+
+    fig, ax, _anim = animate_state_over_list_2d_x(states)
+
+    fig.show()
+    input()
+
+
 def plot_pair_system_evolution_1d(
-    system: PeriodicSystem1D,
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
     initial_state: StateVector[StackedBasisWithVolumeLike[Any, Any, Any]],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
+    *,
+    measure: Measure = "abs",
 ) -> None:
     potential = get_potential_1d(system, config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
@@ -274,14 +291,30 @@ def plot_pair_system_evolution_1d(
         state_scattered_evolved,
     ) = get_isf_pair_states(system, config, initial_state, times, direction)
 
-    fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax1)
-    fig, ax, _anim2 = animate_state_over_list_1d_x(state_scattered_evolved, ax=ax1)
+    fig, ax, _anim1 = animate_state_over_list_1d_x(
+        state_evolved_scattered,
+        ax=ax1,
+        measure=measure,
+    )
+    fig, ax, _anim2 = animate_state_over_list_1d_x(
+        state_scattered_evolved,
+        ax=ax1,
+        measure=measure,
+    )
 
     fig.show()
 
     fig, ax = plt.subplots()
-    fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
-    fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
+    fig, ax, _anim3 = animate_state_over_list_1d_k(
+        state_evolved_scattered,
+        ax=ax,
+        measure=measure,
+    )
+    fig, ax, _anim4 = animate_state_over_list_1d_k(
+        state_scattered_evolved,
+        ax=ax,
+        measure=measure,
+    )
 
     fig.show()
     input()
@@ -294,6 +327,7 @@ def plot_boltzmann_isf(
     direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 10,
+    measure: Measure | None = None,
 ) -> None:
     direction = tuple(1 for _ in config.shape) if direction is None else direction
     times = (
@@ -313,17 +347,19 @@ def plot_boltzmann_isf(
         direction,
         n_repeats=n_repeats,
     )
-    fig, ax, line = plot_value_list_against_time(data)
-    line.set_label("abs ISF")
+    if measure is None:
+        fig, ax, line = plot_value_list_against_time(data)
+        line.set_label("abs ISF")
 
-    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
-    line.set_label("real ISF")
+        fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
+        line.set_label("real ISF")
 
-    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
-    line.set_label("imag ISF")
-
+        fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
+        line.set_label("imag ISF")
+        ax.legend()
+    else:
+        fig, ax, line = plot_value_list_against_time(data, measure=measure)
     ax.set_ylabel("ISF")
-    ax.legend()
 
     fig.show()
     input()

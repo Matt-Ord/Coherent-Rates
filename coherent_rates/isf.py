@@ -8,6 +8,7 @@ import numpy as np
 from scipy.constants import Boltzmann
 from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.basis import FundamentalBasis
+from surface_potential_analysis.basis.basis_like import BasisLike
 from surface_potential_analysis.basis.stacked_basis import StackedBasisWithVolumeLike
 from surface_potential_analysis.basis.time_basis_like import (
     BasisWithTimeLike,
@@ -54,9 +55,11 @@ if TYPE_CHECKING:
 
 _AX0Inv = TypeVar("_AX0Inv", bound=EvenlySpacedTimeBasis[Any, Any, Any])
 
+_B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
+
 
 def _get_isf_pair_states_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
+    hamiltonian: SingleBasisDiagonalOperator[_B0],
     operator: SingleBasisOperator[Any],
     initial_state: StateVector[Any],
     times: _AX0Inv,
@@ -84,7 +87,7 @@ def get_isf_pair_states(
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,
-    direction: tuple[int, ...] = (1,),
+    direction: tuple[int, ...] | None = None,
 ) -> tuple[StateVectorList[_AX0Inv, Any], StateVectorList[_AX0Inv, Any]]:
     operator = get_periodic_x_operator(
         initial_state["basis"],
@@ -100,7 +103,7 @@ def get_isf_pair_states(
 
 
 def _get_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
+    hamiltonian: SingleBasisDiagonalOperator[_B0],
     operator: SingleBasisOperator[Any],
     initial_state: StateVector[Any],
     times: _AX0Inv,
@@ -125,7 +128,7 @@ def get_isf(
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,
-    direction: tuple[int, ...] = (1,),
+    direction: tuple[int, ...] | None = None,
 ) -> ValueList[_AX0Inv]:
     operator = get_periodic_x_operator(
         initial_state["basis"],
@@ -137,7 +140,7 @@ def get_isf(
 
 
 def _get_boltzmann_state_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
+    hamiltonian: SingleBasisDiagonalOperator[_B0],
     temperature: float,
     phase: np.ndarray[tuple[int], np.dtype[np.float64]],
 ) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
@@ -150,7 +153,7 @@ def _get_boltzmann_state_from_hamiltonian(
 
 
 def _get_random_boltzmann_state_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
+    hamiltonian: SingleBasisDiagonalOperator[_B0],
     temperature: float,
 ) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
     rng = np.random.default_rng()
@@ -184,10 +187,10 @@ def get_random_boltzmann_state(
 
 
 def _get_boltzmann_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[Any],
+    hamiltonian: SingleBasisDiagonalOperator[_B0],
     temperature: float,
     times: _AX0Inv,
-    direction: tuple[int, ...] = (1,),
+    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[_AX0Inv]:
@@ -219,7 +222,7 @@ def get_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _AX0Inv,
-    direction: tuple[int, ...] = (1,),
+    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[_AX0Inv]:
@@ -345,7 +348,7 @@ def get_free_particle_time(
     config: PeriodicSystemConfig,
     n_k: tuple[int, ...],
 ) -> float:
-    basis = system.potential(config.shape, config.resolution)["basis"]
+    basis = system.get_potential(config.shape, config.resolution)["basis"]
     dk_stacked = BasisUtil(basis).dk_stacked
     k = np.linalg.norm(np.einsum("i,ij->j", n_k, dk_stacked))
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
@@ -512,34 +515,3 @@ def get_alpha_deltak_linear_fit(
     gradient, intercept = np.polyfit(k_points, rates, 1)
     effective_mass = calculate_effective_mass_from_gradient(config, gradient)
     return AlphaDeltakFitData(gradient, intercept, effective_mass)
-
-
-def get_ak_data_state(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    initial_state: StateVector[Any],
-    nk_points: list[tuple[int, ...]],
-    times: EvenlySpacedTimeBasis[Any, Any, Any],
-) -> ValueList[MomentumBasis]:
-    rates = np.zeros(len(nk_points), dtype=np.complex128)
-    hamiltonian = get_hamiltonian(system, config)
-    for i, nk_point in enumerate(nk_points):
-        isf = get_isf(system, config, initial_state, times, nk_point)
-
-        is_increasing = np.diff(np.abs(isf["data"])) > 0
-        first_increasing_idx = np.argmax(is_increasing).item()
-        idx = times.n - 1 if first_increasing_idx == 0 else first_increasing_idx
-
-        truncated_isf = truncate_value_list(isf, idx)
-        rates[i] = 1 / fit_abs_isf_to_gaussian(truncated_isf).width
-        times = EvenlySpacedTimeBasis(
-            times.n,
-            times.step,
-            times.offset,
-            times.times[idx],
-        )
-    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.einsum("ij,j...->i...", nk_points, dk_stacked)
-    points = k_points.reshape(len(rates))
-    basis = MomentumBasis(points)
-    return {"data": rates, "basis": basis}

@@ -1,5 +1,4 @@
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.state_vector.plot import plot_state_2d_x
 from surface_potential_analysis.state_vector.plot_value_list import (
     plot_value_list_against_time,
 )
@@ -18,14 +17,12 @@ from coherent_rates.system import (
 if __name__ == "__main__":
     config = PeriodicSystemConfig((5, 5), (10, 10), 100, temperature=155)
     system = HYDROGEN_NICKEL_SYSTEM_2D
-    times = EvenlySpacedTimeBasis(100, 1, 0, 5e-13)
+
     plot_system_eigenstates_2d(system, config, 0)
 
+    times = EvenlySpacedTimeBasis(100, 1, 0, 5e-13)
     state = get_random_boltzmann_state(system, config)
     plot_system_evolution_2d(system, config, state, times)
-    fig, ax, line = plot_state_2d_x(state)
-    fig.show()
-    input()
 
     n = (5, 5)
     isf = get_boltzmann_isf(system, config, times, n, n_repeats=10)
