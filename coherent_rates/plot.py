@@ -42,6 +42,7 @@ from coherent_rates.isf import (
     get_boltzmann_isf,
     get_free_particle_time,
     get_isf_pair_states,
+    get_scattered_energy_change_against_k,
 )
 from coherent_rates.system import (
     PeriodicSystem,
@@ -365,5 +366,43 @@ def plot_alpha_deltak_comparison(
         ),
     )
 
+    fig.show()
+    input()
+
+
+def plot_scattered_energy_change_comparison(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    fig, ax = get_figure(None)
+
+    bound_data = get_scattered_energy_change_against_k(
+        system,
+        config,
+        nk_points=nk_points,
+    )
+
+    k_points = bound_data["basis"].k_points
+    k_points_squared = np.square(k_points)
+
+    ax.plot(k_points_squared, bound_data["data"], "blue", label="Bound")
+
+    free_system = PeriodicSystem(
+        id=system.id,
+        barrier_energy=0,
+        lattice_constant=system.lattice_constant,
+        mass=system.mass,
+    )
+    free_data = get_scattered_energy_change_against_k(
+        free_system,
+        config,
+        nk_points=nk_points,
+        n_repeats=1,
+    )
+    ax.plot(k_points_squared, free_data["data"], "orange", label="Free")
+
+    fig.legend()
     fig.show()
     input()
