@@ -428,11 +428,8 @@ def get_ak_data(
     return {"data": rates, "basis": basis}
 
 
-_B0 = TypeVar("_B0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
-
-
 def _get_scattered_energy_change(
-    hamiltonian: SingleBasisDiagonalOperator[_B0],
+    hamiltonian: SingleBasisDiagonalOperator[_BV0],
     temperature: float,
     direction: tuple[int, ...] | None = None,
     *,
@@ -454,17 +451,6 @@ def _get_scattered_energy_change(
     energy = np.real(calculate_expectation(hamiltonian_operator, state))
 
     return {"basis": FundamentalBasis(n_repeats), "data": scattered_energy - energy}
-
-
-def _get_default_nk_points(config: PeriodicSystemConfig) -> list[tuple[int, ...]]:
-    return list(
-        zip(
-            *tuple(
-                cast(list[int], (s * np.arange(1, r)).tolist())
-                for (s, r) in zip(config.shape, config.resolution, strict=True)
-            ),
-        ),
-    )
 
 
 def get_scattered_energy_change_against_k(
