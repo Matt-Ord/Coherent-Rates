@@ -6,11 +6,6 @@ from typing import TYPE_CHECKING, Any, TypeVar
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.constants import Boltzmann
-from surface_potential_analysis.basis.basis_like import BasisLike
-from surface_potential_analysis.basis.stacked_basis import (
-    StackedBasisLike,
-    StackedBasisWithVolumeLike,
-)
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.potential.plot import (
     plot_potential_1d_x,
@@ -67,6 +62,11 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
+    from surface_potential_analysis.basis.basis_like import BasisLike
+    from surface_potential_analysis.basis.stacked_basis import (
+        StackedBasisLike,
+        StackedBasisWithVolumeLike,
+    )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
     from surface_potential_analysis.types import SingleFlatIndexLike
@@ -74,6 +74,11 @@ if TYPE_CHECKING:
     from surface_potential_analysis.wavepacket.wavepacket import (
         BlochWavefunctionListWithEigenvaluesList,
     )
+
+    _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
+
+    _SB0 = TypeVar("_SB0", bound=StackedBasisLike[Any, Any, Any])
+    _SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
 
 def plot_system_eigenstates_1d(
@@ -99,9 +104,6 @@ def plot_system_eigenstates_1d(
     input()
 
 
-_B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
-
-
 def _get_effective_mass_rates(
     mass: ValueList[_B0],
     temperature: float,
@@ -117,10 +119,6 @@ def _get_effective_mass_rates(
         "basis": mass["basis"],
         "data": np.sqrt(Boltzmann * temperature / mass["data"]),
     }
-
-
-_SB0 = TypeVar("_SB0", bound=StackedBasisLike[Any, Any, Any])
-_SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
 
 def plot_wavepacket_transformed_energy_rate(  # noqa: PLR0913
@@ -140,7 +138,11 @@ def plot_wavepacket_transformed_energy_rate(  # noqa: PLR0913
 
     Parameters
     ----------
-    wavepacket : Wavepacket[_NS0Inv, _NS1Inv, TupleBasisLike[tuple[_A3d0Inv, _A3d1Inv, _A3d2Inv]]
+    wavepacket : BlochWavefunctionListWithEigenvaluesList[
+        _B0,
+        _SB0,
+        _SBV0,
+    ]
     ax : Axes | None, optional
         plot axis, by default None
     scale : Literal[&quot;symlog&quot;, &quot;linear&quot;], optional

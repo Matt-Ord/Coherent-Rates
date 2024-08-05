@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
@@ -204,7 +205,13 @@ class PeriodicSystem:
     mass: float
 
     def __hash__(self: Self) -> int:  # noqa: D105
-        return hash((self.id, self.barrier_energy, self.lattice_constant, self.mass))
+        h = hashlib.sha256(usedforsecurity=False)
+        h.update(self.id.encode())
+        h.update(str(self.barrier_energy).encode())
+        h.update(str(self.lattice_constant).encode())
+        h.update(str(self.mass).encode())
+
+        return int.from_bytes(h.digest(), "big")
 
     def get_fundamental_potential(
         self: Self,
