@@ -12,18 +12,25 @@ from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
 )
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.potential.plot import plot_potential_1d_x
+from surface_potential_analysis.potential.plot import (
+    plot_potential_1d_x,
+    plot_potential_2d_x,
+)
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
+    animate_state_over_list_2d_x,
     plot_state_1d_k,
     plot_state_1d_x,
+    plot_state_2d_k,
+    plot_state_2d_x,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
 from surface_potential_analysis.state_vector.state_vector_list import (
+    get_state_vector,
     state_vector_list_into_iter,
 )
 from surface_potential_analysis.util.plot import Scale, get_figure
@@ -38,7 +45,7 @@ from surface_potential_analysis.wavepacket.plot import (
 
 from coherent_rates.isf import (
     MomentumBasis,
-    get_ak_data_1d,
+    get_ak_data,
     get_boltzmann_isf,
     get_free_particle_time,
     get_isf_pair_states,
@@ -46,10 +53,11 @@ from coherent_rates.isf import (
 )
 from coherent_rates.system import (
     PeriodicSystem,
+    PeriodicSystem1d,
+    PeriodicSystem2d,
     PeriodicSystemConfig,
     get_bloch_wavefunctions,
     get_hamiltonian,
-    get_potential,
     solve_schrodinger_equation,
 )
 
@@ -59,18 +67,19 @@ if TYPE_CHECKING:
     from matplotlib.lines import Line2D
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
+    from surface_potential_analysis.types import SingleFlatIndexLike
     from surface_potential_analysis.util.util import Measure
     from surface_potential_analysis.wavepacket.wavepacket import (
         BlochWavefunctionListWithEigenvaluesList,
     )
 
 
-def plot_system_eigenstates(
-    system: PeriodicSystem,
+def plot_system_eigenstates_1d(
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
 ) -> None:
     """Plot the potential against position."""
-    potential = get_potential(system, config)
+    potential = system.get_potential(config.shape, config.resolution)
     fig, ax, _ = plot_potential_1d_x(potential)
 
     hamiltonian = get_hamiltonian(system, config)
@@ -153,7 +162,7 @@ def plot_wavepacket_transformed_energy_rate(  # noqa: PLR0913
 
     ax.set_xlabel("Band Index")
     ax.set_ylabel("Rate / s^-1")
-    ax.set_ylim([0, ax.get_ylim()[1]])
+    ax.set_ylim((0.0, ax.get_ylim()[1]))
 
     return fig, ax, line
 
@@ -199,13 +208,43 @@ def plot_system_bands(
     input()
 
 
-def plot_system_evolution(
-    system: PeriodicSystem,
+def plot_system_eigenstates_2d(
+    system: PeriodicSystem2d,
+    config: PeriodicSystemConfig,
+    index: SingleFlatIndexLike | None = None,
+) -> None:
+    """Plot the potential against position."""
+    potential = system.get_potential(config.shape, config.resolution)
+    fig, _, _ = plot_potential_2d_x(potential)
+    fig.show()
+
+    hamiltonian = get_hamiltonian(system, config)
+    eigenvectors = hamiltonian["basis"][0].vectors
+
+    if index is None:
+        for i in range(config.n_bands):
+            state = get_state_vector(eigenvectors, i)
+            fig, _ax, _line = plot_state_2d_x(state)
+            fig.show()
+            fig, _ax, _line = plot_state_2d_k(state)
+            fig.show()
+    else:
+        state = get_state_vector(eigenvectors, index)
+        fig, _ax, _line = plot_state_2d_x(state)
+        fig.show()
+        fig, _ax, _line = plot_state_2d_k(state)
+        fig.show()
+
+    input()
+
+
+def plot_system_evolution_1d(
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
-    potential = get_potential(system, config)
+    potential = system.get_potential(config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
@@ -217,14 +256,30 @@ def plot_system_evolution(
     input()
 
 
-def plot_pair_system_evolution(
-    system: PeriodicSystem,
+def plot_system_evolution_2d(
+    system: PeriodicSystem2d,
+    config: PeriodicSystemConfig,
+    initial_state: StateVector[Any],
+    times: EvenlySpacedTimeBasis[Any, Any, Any],
+) -> None:
+    states = solve_schrodinger_equation(system, config, initial_state, times)
+
+    fig, _ax, _anim = animate_state_over_list_2d_x(states)
+
+    fig.show()
+    input()
+
+
+def plot_pair_system_evolution_1d(
+    system: PeriodicSystem1d,
     config: PeriodicSystemConfig,
     initial_state: StateVector[StackedBasisWithVolumeLike[Any, Any, Any]],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     direction: tuple[int] = (1,),
+    *,
+    measure: Measure = "abs",
 ) -> None:
-    potential = get_potential(system, config)
+    potential = system.get_potential(config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
@@ -234,14 +289,30 @@ def plot_pair_system_evolution(
         state_scattered_evolved,
     ) = get_isf_pair_states(system, config, initial_state, times, direction)
 
-    fig, ax, _anim1 = animate_state_over_list_1d_x(state_evolved_scattered, ax=ax1)
-    fig, ax, _anim2 = animate_state_over_list_1d_x(state_scattered_evolved, ax=ax1)
+    fig, ax, _anim1 = animate_state_over_list_1d_x(
+        state_evolved_scattered,
+        ax=ax1,
+        measure=measure,
+    )
+    fig, ax, _anim2 = animate_state_over_list_1d_x(
+        state_scattered_evolved,
+        ax=ax1,
+        measure=measure,
+    )
 
     fig.show()
 
     fig, ax = plt.subplots()
-    fig, ax, _anim3 = animate_state_over_list_1d_k(state_evolved_scattered, ax=ax)
-    fig, ax, _anim4 = animate_state_over_list_1d_k(state_scattered_evolved, ax=ax)
+    fig, ax, _anim3 = animate_state_over_list_1d_k(
+        state_evolved_scattered,
+        ax=ax,
+        measure=measure,
+    )
+    fig, ax, _anim4 = animate_state_over_list_1d_k(
+        state_scattered_evolved,
+        ax=ax,
+        measure=measure,
+    )
 
     fig.show()
     input()
@@ -251,16 +322,18 @@ def plot_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 10,
+    measure: Measure | None = None,
 ) -> None:
+    direction = tuple(1 for _ in config.shape) if direction is None else direction
     times = (
         EvenlySpacedTimeBasis(
             100,
             1,
             0,
-            4 * get_free_particle_time(system, config, direction[0]),
+            4 * get_free_particle_time(system, config, direction),
         )
         if times is None
         else times
@@ -272,17 +345,19 @@ def plot_boltzmann_isf(
         direction,
         n_repeats=n_repeats,
     )
-    fig, ax, line = plot_value_list_against_time(data)
-    line.set_label("abs ISF")
+    if measure is None:
+        fig, ax, line = plot_value_list_against_time(data)
+        line.set_label("abs ISF")
 
-    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
-    line.set_label("real ISF")
+        fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
+        line.set_label("real ISF")
 
-    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
-    line.set_label("imag ISF")
-
+        fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
+        line.set_label("imag ISF")
+        ax.legend()
+    else:
+        fig, ax, line = plot_value_list_against_time(data, measure=measure)
     ax.set_ylabel("ISF")
-    ax.legend()
 
     fig.show()
     input()
@@ -335,19 +410,14 @@ def plot_alpha_deltak_comparison(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
-    nk_points: list[int] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
-    data = get_ak_data_1d(system, config, nk_points=nk_points, times=times)
+    data = get_ak_data(system, config, nk_points=nk_points, times=times)
     fig, ax = _plot_alpha_deltak(data)
 
-    free_system = PeriodicSystem(
-        id=system.id,
-        barrier_energy=0,
-        lattice_constant=system.lattice_constant,
-        mass=system.mass,
-    )
-    free_data = get_ak_data_1d(free_system, config, nk_points=nk_points, times=times)
+    free_system = system.as_free_system()
+    free_data = get_ak_data(free_system, config, nk_points=nk_points, times=times)
     _, _ = _plot_alpha_deltak(free_data, ax=ax)
 
     ax.set_ylim(0, ax.get_ylim()[1])

@@ -2,7 +2,7 @@ from coherent_rates.plot import (
     plot_scattered_energy_change_comparison,
 )
 from coherent_rates.system import (
-    HYDROGEN_NICKEL_SYSTEM,
+    HYDROGEN_NICKEL_SYSTEM_1D,
     PeriodicSystemConfig,
 )
 
@@ -11,7 +11,7 @@ from coherent_rates.system import (
 
 if __name__ == "__main__":
     config = PeriodicSystemConfig((20,), (50,), 50, temperature=155)
-    system = HYDROGEN_NICKEL_SYSTEM
+    system = HYDROGEN_NICKEL_SYSTEM_1D
 
     n = 0
     b = 1
