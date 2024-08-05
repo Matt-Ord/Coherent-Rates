@@ -58,8 +58,6 @@ from coherent_rates.system import (
     PeriodicSystemConfig,
     get_bloch_wavefunctions,
     get_hamiltonian,
-    get_potential_1d,
-    get_potential_2d,
     solve_schrodinger_equation,
 )
 
@@ -81,7 +79,7 @@ def plot_system_eigenstates_1d(
     config: PeriodicSystemConfig,
 ) -> None:
     """Plot the potential against position."""
-    potential = get_potential_1d(system, config.shape, config.resolution)
+    potential = system.get_potential(config.shape, config.resolution)
     fig, ax, _ = plot_potential_1d_x(potential)
 
     hamiltonian = get_hamiltonian(system, config)
@@ -216,7 +214,7 @@ def plot_system_eigenstates_2d(
     index: SingleFlatIndexLike | None = None,
 ) -> None:
     """Plot the potential against position."""
-    potential = get_potential_2d(system, config.shape, config.resolution)
+    potential = system.get_potential(config.shape, config.resolution)
     fig, _, _ = plot_potential_2d_x(potential)
     fig.show()
 
@@ -266,7 +264,7 @@ def plot_system_evolution_2d(
 ) -> None:
     states = solve_schrodinger_equation(system, config, initial_state, times)
 
-    fig, ax, _anim = animate_state_over_list_2d_x(states)
+    fig, _ax, _anim = animate_state_over_list_2d_x(states)
 
     fig.show()
     input()

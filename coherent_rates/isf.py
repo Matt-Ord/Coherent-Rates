@@ -57,6 +57,8 @@ _AX0Inv = TypeVar("_AX0Inv", bound=EvenlySpacedTimeBasis[Any, Any, Any])
 
 _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
 
+_BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
+
 
 def _get_isf_pair_states_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
@@ -143,7 +145,7 @@ def _get_boltzmann_state_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
     temperature: float,
     phase: np.ndarray[tuple[int], np.dtype[np.float64]],
-) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
+) -> StateVector[_B0]:
     boltzmann_distribution = np.exp(
         -hamiltonian["data"] / (2 * Boltzmann * temperature),
     )
@@ -155,7 +157,7 @@ def _get_boltzmann_state_from_hamiltonian(
 def _get_random_boltzmann_state_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
     temperature: float,
-) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
+) -> StateVector[_B0]:
     rng = np.random.default_rng()
     phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
     return _get_boltzmann_state_from_hamiltonian(hamiltonian, temperature, phase)
@@ -187,7 +189,7 @@ def get_random_boltzmann_state(
 
 
 def _get_boltzmann_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[_B0],
+    hamiltonian: SingleBasisDiagonalOperator[_BV0],
     temperature: float,
     times: _AX0Inv,
     direction: tuple[int, ...] | None = None,

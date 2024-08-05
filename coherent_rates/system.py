@@ -305,7 +305,9 @@ def _get_full_hamiltonian(
     *,
     bloch_fraction: np.ndarray[tuple[Literal[1]], np.dtype[np.float64]] | None = None,
 ) -> SingleBasisOperator[
-    TupleBasisWithLengthLike[*tuple[FundamentalPositionBasis[int, int], ...]],
+    TupleBasisWithLengthLike[
+        *tuple[FundamentalTransformedPositionBasis[int, int], ...]
+    ],
 ]:
     bloch_fraction = np.array([0]) if bloch_fraction is None else bloch_fraction
     potential = system.get_potential(shape, resolution)
