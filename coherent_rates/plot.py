@@ -246,7 +246,7 @@ def plot_system_evolution_1d(
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
 ) -> None:
-    potential = get_potential_1d(system, config.shape, config.resolution)
+    potential = system.get_potential(config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()
@@ -281,7 +281,7 @@ def plot_pair_system_evolution_1d(
     *,
     measure: Measure = "abs",
 ) -> None:
-    potential = get_potential_1d(system, config.shape, config.resolution)
+    potential = system.get_potential(config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
     ax1 = ax.twinx()

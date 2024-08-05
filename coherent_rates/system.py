@@ -91,6 +91,15 @@ def _get_fundamental_potential_2d(
         FundamentalTransformedPositionBasis[Literal[3], Literal[2]],
     ]
 ]:
+    """Generate potential for 2D periodic system, for 111 plane of FCC lattice.
+
+    Expression for potential from:
+    [1] D. J. Ward
+        A study of spin-echo lineshapes in helium atom scattering from adsorbates.
+    [2]S. P. Rittmeyer et al
+        Energy Dissipation during Diffusion at Metal Surfaces:
+        Disentangling the Role of Phonons vs Electron-Hole Pairs.
+    """
     # We want the simplest possible potential in 2d with symmetry
     # (x0,x1) -> (x1,x0)
     # (x0,x1) -> (-x0,x1)
@@ -287,44 +296,6 @@ LITHIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
     lattice_constant=3.615e-10,
     mass=1.152414898e-26,
 )
-
-
-def get_potential_1d(
-    system: PeriodicSystem1d,
-    shape: tuple[int, ...],
-    resolution: tuple[int, ...],
-) -> Potential[
-    TupleBasisWithLengthLike[
-        *tuple[EvenlySpacedTransformedPositionBasis[Any, Any, Any, Any], ...]
-    ]
-]:
-    potential = _get_fundamental_potential_1d(system)
-    interpolated = _get_interpolated_potential(potential, resolution)
-
-    return _get_extrapolated_potential(interpolated, shape)
-
-
-def get_potential_2d(
-    system: PeriodicSystem2d,
-    shape: tuple[_L0Inv, ...],
-    resolution: tuple[int, ...],
-) -> Potential[
-    TupleBasisWithLengthLike[
-        *tuple[EvenlySpacedTransformedPositionBasis[Any, Any, Any, Any], ...]
-    ]
-]:
-    """Generate potential for 2D periodic system, for 111 plane of FCC lattice.
-
-    Expression for potential from:
-    [1] D. J. Ward
-        A study of spin-echo lineshapes in helium atom scattering from adsorbates.
-    [2]S. P. Rittmeyer et al
-        Energy Dissipation during Diffusion at Metal Surfaces:
-        Disentangling the Role of Phonons vs Electron-Hole Pairs.
-    """
-    potential = _get_fundamental_potential_2d(system)
-    interpolated = _get_interpolated_potential(potential, resolution)
-    return _get_extrapolated_potential(interpolated, shape)
 
 
 def _get_full_hamiltonian(
