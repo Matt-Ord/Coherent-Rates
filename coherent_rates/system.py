@@ -305,7 +305,7 @@ SODIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
     mass=3.8175458e-26,
 )
 
-SODIUM_COPPER_SYSTEM_2D = PeriodicSystem1d(
+SODIUM_COPPER_SYSTEM_2D = PeriodicSystem2d(
     id="NaCu",
     barrier_energy=55e-3 * electron_volt,
     lattice_constant=3.615e-10,
@@ -313,6 +313,13 @@ SODIUM_COPPER_SYSTEM_2D = PeriodicSystem1d(
 )
 
 LITHIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
+    id="LiCu",
+    barrier_energy=45e-3 * electron_volt,
+    lattice_constant=3.615e-10,
+    mass=1.152414898e-26,
+)
+
+LITHIUM_COPPER_SYSTEM_2D = PeriodicSystem2d(
     id="LiCu",
     barrier_energy=45e-3 * electron_volt,
     lattice_constant=3.615e-10,
