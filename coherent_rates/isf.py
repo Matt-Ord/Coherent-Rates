@@ -73,7 +73,6 @@ _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
 _B1 = TypeVar("_B1", bound=BasisLike[Any, Any])
 _B2 = TypeVar("_B2", bound=BasisLike[Any, Any])
 
-_SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 _BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
 _ESB0 = TypeVar("_ESB0", bound=ExplicitStackedBasisWithLength[Any, Any])
@@ -82,9 +81,9 @@ _ESB0 = TypeVar("_ESB0", bound=ExplicitStackedBasisWithLength[Any, Any])
 def _get_isf_pair_states_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
     operator: SparseScatteringOperator[_ESB0, _ESB0],
-    initial_state: StateVector[_B0],
+    initial_state: StateVector[_B1],
     times: _BT0,
-) -> tuple[StateVectorList[_BT0, Any], StateVectorList[_BT0, Any]]:
+) -> tuple[StateVectorList[_BT0, _ESB0], StateVectorList[_BT0, _B0]]:
     state_evolved = solve_schrodinger_equation_diagonal(
         initial_state,
         times,
@@ -113,7 +112,10 @@ def get_isf_pair_states(
     initial_state: StateVector[_B1],
     times: _BT0,
     direction: tuple[int, ...] | None = None,
-) -> tuple[StateVectorList[_BT0, Any], StateVectorList[_BT0, Any]]:
+) -> tuple[
+    StateVectorList[_BT0, BasisLike[Any, Any]],
+    StateVectorList[_BT0, BasisLike[Any, Any]],
+]:
     hamiltonian = get_hamiltonian(system, config)
     operator = get_periodic_x_operator_sparse(
         hamiltonian["basis"][1],
@@ -182,16 +184,16 @@ def _get_band_resolved_isf_from_hamiltonian(
         initial_state,
         times,
     )
-    per_band_0 = _get_states_per_band(
-        state_evolved_scattered,
-    )
-    per_band_1 = _get_states_per_band(
+    per_band_scattered_evolved = _get_states_per_band(
         state_scattered_evolved,
+    )
+    per_band_evolved_scattered = _get_states_per_band(
+        state_evolved_scattered,
     )
 
     return calculate_inner_products_elementwise(
-        per_band_0,
-        per_band_1,
+        per_band_scattered_evolved,
+        per_band_evolved_scattered,
     )
 
 

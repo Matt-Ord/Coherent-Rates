@@ -213,7 +213,7 @@ class PeriodicSystem:
 
         return int.from_bytes(h.digest(), "big")
 
-    def get_fundamental_potential(
+    def get_fundamental_potential(  # noqa: D102
         self: Self,
     ) -> Potential[
         TupleBasisWithLengthLike[
@@ -222,7 +222,7 @@ class PeriodicSystem:
     ]:
         ...
 
-    def get_potential(
+    def get_potential(  # noqa: D102
         self: Self,
         shape: tuple[int, ...],
         resolution: tuple[int, ...],
@@ -232,8 +232,22 @@ class PeriodicSystem:
 
         return _get_extrapolated_potential(interpolated, shape)
 
-    def as_free_system(self: Self) -> PeriodicSystem:
-        ...
+
+class FreeSystem(PeriodicSystem):
+    def __init__(self, other: PeriodicSystem) -> None:  # noqa: ANN101, D107
+        self._other = other
+        super().__init__(other.id, 0, other.lattice_constant, other.mass)
+
+    def get_fundamental_potential(  # noqa: D102
+        self: Self,
+    ) -> Potential[
+        TupleBasisWithLengthLike[
+            *tuple[FundamentalTransformedPositionBasis[Any, Any], ...]
+        ]
+    ]:
+        other_potential = self._other.get_fundamental_potential()
+        other_potential["data"] = np.zeros_like(other_potential["data"])
+        return other_potential
 
 
 class PeriodicSystem1d(PeriodicSystem):
@@ -243,9 +257,6 @@ class PeriodicSystem1d(PeriodicSystem):
         self: Self,
     ) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
         return _get_fundamental_potential_1d(self)
-
-    def as_free_system(self: Self) -> PeriodicSystem1d:
-        return PeriodicSystem1d(self.id, 0, self.lattice_constant, self.mass)
 
 
 class PeriodicSystem2d(PeriodicSystem):
@@ -258,9 +269,6 @@ class PeriodicSystem2d(PeriodicSystem):
         ]
     ]:
         return _get_fundamental_potential_2d(self)
-
-    def as_free_system(self: Self) -> PeriodicSystem2d:
-        return PeriodicSystem2d(self.id, 0, self.lattice_constant, self.mass)
 
 
 @dataclass
@@ -291,6 +299,13 @@ HYDROGEN_NICKEL_SYSTEM_2D = PeriodicSystem2d(
 )
 
 SODIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
+    id="NaCu",
+    barrier_energy=55e-3 * electron_volt,
+    lattice_constant=3.615e-10,
+    mass=3.8175458e-26,
+)
+
+SODIUM_COPPER_SYSTEM_2D = PeriodicSystem1d(
     id="NaCu",
     barrier_energy=55e-3 * electron_volt,
     lattice_constant=3.615e-10,
