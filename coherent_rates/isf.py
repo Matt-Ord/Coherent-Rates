@@ -9,7 +9,10 @@ from scipy.constants import Boltzmann
 from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.basis import FundamentalBasis
 from surface_potential_analysis.basis.basis_like import BasisLike
-from surface_potential_analysis.basis.stacked_basis import StackedBasisWithVolumeLike
+from surface_potential_analysis.basis.stacked_basis import (
+    StackedBasisWithVolumeLike,
+    TupleBasis,
+)
 from surface_potential_analysis.basis.time_basis_like import (
     BasisWithTimeLike,
     EvenlySpacedTimeBasis,
@@ -42,6 +45,9 @@ if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
         ExplicitStackedBasisWithLength,
     )
+    from surface_potential_analysis.basis.stacked_basis import (
+        TupleBasisLike,
+    )
     from surface_potential_analysis.state_vector.eigenstate_list import (
         StatisticalValueList,
         ValueList,
@@ -53,28 +59,35 @@ if TYPE_CHECKING:
 
     from coherent_rates.system import PeriodicSystem, PeriodicSystemConfig
 
-_AX0Inv = TypeVar("_AX0Inv", bound=EvenlySpacedTimeBasis[Any, Any, Any])
+_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
 
 _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
+_B1 = TypeVar("_B1", bound=BasisLike[Any, Any])
+_B2 = TypeVar("_B2", bound=BasisLike[Any, Any])
 
+_SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 _BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
 
 def _get_isf_pair_states_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
-    operator: SingleBasisOperator[Any],
-    initial_state: StateVector[Any],
-    times: _AX0Inv,
-) -> tuple[StateVectorList[_AX0Inv, Any], StateVectorList[_AX0Inv, Any]]:
+    operator: SingleBasisOperator[_B1],
+    initial_state: StateVector[_B2],
+    times: _BT0,
+) -> tuple[StateVectorList[_BT0, _B0], StateVectorList[_BT0, _B0]]:
     state_evolved = solve_schrodinger_equation_diagonal(
         initial_state,
         times,
         hamiltonian,
     )
-    state_evolved_scattered = apply_operator_to_states(operator, state_evolved)
+    # Make sure we only pay the cost of converting the operator once
+    operator_converted = convert_operator_to_basis(operator, hamiltonian["basis"])
+    state_evolved_scattered = apply_operator_to_states(
+        operator_converted,
+        state_evolved,
+    )
 
     state_scattered = apply_operator_to_state(operator, initial_state)
-
     state_scattered_evolved = solve_schrodinger_equation_diagonal(
         state_scattered,
         times,
@@ -87,10 +100,10 @@ def _get_isf_pair_states_from_hamiltonian(
 def get_isf_pair_states(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[Any],
-    times: _AX0Inv,
+    initial_state: StateVector[_SBV0],
+    times: _BT0,
     direction: tuple[int, ...] | None = None,
-) -> tuple[StateVectorList[_AX0Inv, Any], StateVectorList[_AX0Inv, Any]]:
+) -> tuple[StateVectorList[_BT0, Any], StateVectorList[_BT0, Any]]:
     operator = get_periodic_x_operator(
         initial_state["basis"],
         direction=direction,
@@ -108,8 +121,8 @@ def _get_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
     operator: SingleBasisOperator[Any],
     initial_state: StateVector[Any],
-    times: _AX0Inv,
-) -> ValueList[_AX0Inv]:
+    times: _BT0,
+) -> ValueList[_BT0]:
     (
         state_evolved_scattered,
         state_scattered_evolved,
@@ -125,13 +138,58 @@ def _get_isf_from_hamiltonian(
     )
 
 
+def _get_states_per_band(
+    states: StateVectorList[
+        _B1,
+        ExplicitStackedBasisWithLength[TupleBasisLike[_B0, _B2], Any],
+    ],
+) -> StateVectorList[TupleBasis[_B0, _B1], _B2]:
+    basis = states["basis"][1].vectors["basis"][0]
+
+    data = states["data"].reshape(-1, *basis.shape).swapaxes(0, 1)
+    return {
+        "basis": TupleBasis(TupleBasis(basis[0], states["basis"][0]), basis[1]),
+        "data": data.ravel(),
+    }
+
+
+def _get_band_resolved_isf_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[
+        ExplicitStackedBasisWithLength[TupleBasisLike[_B0, Any], Any]
+    ],
+    operator: SingleBasisOperator[Any],
+    initial_state: StateVector[Any],
+    times: _BT0,
+) -> ValueList[TupleBasis[_B0, _BT0]]:
+    (
+        state_evolved_scattered,
+        state_scattered_evolved,
+    ) = _get_isf_pair_states_from_hamiltonian(
+        hamiltonian,
+        operator,
+        initial_state,
+        times,
+    )
+    per_band_0 = _get_states_per_band(
+        state_evolved_scattered,
+    )
+    per_band_1 = _get_states_per_band(
+        state_scattered_evolved,
+    )
+
+    return calculate_inner_products_elementwise(
+        per_band_0,
+        per_band_1,
+    )
+
+
 def get_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[Any],
-    times: _AX0Inv,
+    initial_state: StateVector[_SBV0],
+    times: _BT0,
     direction: tuple[int, ...] | None = None,
-) -> ValueList[_AX0Inv]:
+) -> ValueList[_BT0]:
     operator = get_periodic_x_operator(
         initial_state["basis"],
         direction=direction,
@@ -189,13 +247,13 @@ def get_random_boltzmann_state(
 
 
 def _get_boltzmann_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[_BV0],
+    hamiltonian: SingleBasisDiagonalOperator[_SBV0],
     temperature: float,
-    times: _AX0Inv,
+    times: _BT0,
     direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 1,
-) -> StatisticalValueList[_AX0Inv]:
+) -> StatisticalValueList[_BT0]:
     isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
     # Convert the operator to the hamiltonian basis
     # to prevent conversion in each repeat
@@ -223,21 +281,27 @@ def _get_boltzmann_isf_from_hamiltonian(
 def get_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    times: _AX0Inv,
+    times: _BT0,
     direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 1,
-) -> StatisticalValueList[_AX0Inv]:
+) -> StatisticalValueList[_BT0]:
     isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
+    converted_operator = convert_operator_to_basis(operator, hamiltonian["basis"])
 
     for i in range(n_repeats):
         state = _get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
             config.temperature,
         )
-        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        data = _get_isf_from_hamiltonian(
+            hamiltonian,
+            converted_operator,
+            state,
+            times,
+        )
         isf_data[i, :] = data["data"]
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
@@ -245,6 +309,43 @@ def get_boltzmann_isf(
     return {
         "data": mean,
         "basis": times,
+        "standard_deviation": sd,
+    }
+
+
+def get_band_resolved_boltzmann_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _BT0,
+    direction: tuple[int] = (1,),
+    *,
+    n_repeats: int = 1,
+) -> StatisticalValueList[TupleBasisLike[BasisLike[Any, Any], _BT0]]:
+    hamiltonian = get_hamiltonian(system, config)  #
+    bands = hamiltonian["basis"][0].vectors["basis"][0][0]
+    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
+    converted_operator = convert_operator_to_basis(operator, hamiltonian["basis"])
+
+    isf_data = np.zeros((n_repeats, bands.n * times.n), dtype=np.complex128)
+
+    for i in range(n_repeats):
+        state = _get_random_boltzmann_state_from_hamiltonian(
+            hamiltonian,
+            config.temperature,
+        )
+        data = _get_band_resolved_isf_from_hamiltonian(
+            hamiltonian,
+            converted_operator,
+            state,
+            times,
+        )
+        isf_data[i, :] = data["data"]
+
+    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+    sd = np.std(isf_data, axis=0, dtype=np.complex128)
+    return {
+        "data": mean,
+        "basis": TupleBasis(bands, times),
         "standard_deviation": sd,
     }
 
@@ -257,9 +358,6 @@ class GaussianFitData:
     amplitude_error: float
     width: float
     width_error: float
-
-
-_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
 
 
 def fit_abs_isf_to_gaussian(

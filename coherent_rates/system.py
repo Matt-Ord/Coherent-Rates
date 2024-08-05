@@ -11,10 +11,10 @@ from surface_potential_analysis.basis.basis import (
     FundamentalTransformedPositionBasis,
     FundamentalTransformedPositionBasis1d,
     TransformedPositionBasis,
+    TruncatedBasis,
 )
 from surface_potential_analysis.basis.basis_like import BasisWithLengthLike
 from surface_potential_analysis.basis.evenly_spaced_basis import (
-    EvenlySpacedBasis,
     EvenlySpacedTransformedPositionBasis,
 )
 from surface_potential_analysis.basis.stacked_basis import (
@@ -323,7 +323,7 @@ def get_bloch_wavefunctions(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> BlochWavefunctionListWithEigenvaluesList[
-    EvenlySpacedBasis[int, int, int],
+    TruncatedBasis[int, int],
     TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
     StackedBasisWithVolumeLike[Any, Any, Any],
 ]:
@@ -339,7 +339,7 @@ def get_bloch_wavefunctions(
 
     return generate_wavepacket(
         hamiltonian_generator,
-        band_basis=EvenlySpacedBasis(config.n_bands, 1, 0),
+        band_basis=TruncatedBasis(config.n_bands, np.prod(config.resolution).item()),
         list_basis=fundamental_transformed_stacked_basis_from_shape(config.shape),
     )
 
@@ -347,7 +347,15 @@ def get_bloch_wavefunctions(
 def get_hamiltonian(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-) -> SingleBasisDiagonalOperator[ExplicitStackedBasisWithLength[Any, Any]]:
+) -> SingleBasisDiagonalOperator[
+    ExplicitStackedBasisWithLength[
+        TupleBasisLike[
+            TruncatedBasis[int, int],
+            TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
+        ],
+        Any,
+    ]
+]:
     wavefunctions = get_bloch_wavefunctions(system, config)
 
     return get_full_bloch_hamiltonian(wavefunctions)

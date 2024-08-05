@@ -18,4 +18,4 @@ if __name__ == "__main__":
         0,
         20 * get_free_particle_time(system, config, (1,)),
     )
-    plot_boltzmann_isf(system, config, times, direction=(1,))
+    plot_boltzmann_isf(system, config, times, direction=(80,))
