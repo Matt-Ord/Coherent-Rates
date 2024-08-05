@@ -448,6 +448,7 @@ def get_free_particle_time(
     basis = system.get_potential(config.shape, config.resolution)["basis"]
     dk_stacked = BasisUtil(basis).dk_stacked
     k = np.linalg.norm(np.einsum("i,ij->j", n_k, dk_stacked))
+    k = np.linalg.norm(dk_stacked[0]) if k == 0 else k
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
 
 
