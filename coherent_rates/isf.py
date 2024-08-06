@@ -536,7 +536,7 @@ def _get_scattered_energy_change(
         scattered_state,
     )
 
-    return scattered_energy - energy
+    return np.real(scattered_energy - energy)
 
 
 def _get_thermal_scattered_energy_change(
