@@ -5,23 +5,34 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.constants import Boltzmann
+from scipy.constants import Boltzmann, hbar
+from surface_potential_analysis.basis.basis_like import BasisLike
+from surface_potential_analysis.basis.stacked_basis import (
+    StackedBasisLike,
+    StackedBasisWithVolumeLike,
+)
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+from surface_potential_analysis.basis.util import BasisUtil
+from surface_potential_analysis.operator.operator import apply_operator_to_state
 from surface_potential_analysis.potential.plot import (
     plot_potential_1d_x,
     plot_potential_2d_x,
+)
+from surface_potential_analysis.state_vector.conversion import (
+    convert_state_vector_to_basis,
 )
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
     animate_state_over_list_2d_x,
+    get_periodic_x_operator,
     plot_state_1d_k,
     plot_state_1d_x,
     plot_state_2d_k,
     plot_state_2d_x,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
-    plot_split_value_list_against_time,
+    plot_all_value_list_against_time,
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
@@ -46,7 +57,9 @@ from coherent_rates.isf import (
     get_boltzmann_isf,
     get_free_particle_time,
     get_isf_pair_states,
+    get_random_boltzmann_state,
     get_scattered_energy_change_against_k,
+    get_thermal_scattered_energy_change_against_k,
 )
 from coherent_rates.system import (
     PeriodicSystem,
@@ -325,7 +338,7 @@ def plot_pair_system_evolution_1d(
 def _get_default_times(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    direction: tuple[int, ...] = (1,),
+    direction: tuple[int, ...] | None = None,
 ) -> EvenlySpacedTimeBasis[Any, Any, Any]:
     return EvenlySpacedTimeBasis(
         100,
@@ -344,8 +357,6 @@ def plot_boltzmann_isf(
     n_repeats: int = 10,
     measure: Measure | None = None,
 ) -> None:
-    direction = tuple(1 for _ in config.shape) if direction is None else direction
-
     times = _get_default_times(system, config, direction) if times is None else times
     data = get_boltzmann_isf(
         system,
@@ -375,7 +386,7 @@ def plot_band_resolved_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 10,
 ) -> None:
@@ -388,7 +399,7 @@ def plot_band_resolved_boltzmann_isf(
         direction,
         n_repeats=n_repeats,
     )
-    fig, _ = plot_split_value_list_against_time(resolved_data, measure="real")
+    fig, _ = plot_all_value_list_against_time(resolved_data, measure="real")
 
     fig.show()
     input()
@@ -471,7 +482,7 @@ def plot_alpha_deltak_comparison(
     input()
 
 
-def plot_scattered_energy_change_comparison(
+def plot_thermal_scattered_energy_change_comparison(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
@@ -479,7 +490,7 @@ def plot_scattered_energy_change_comparison(
 ) -> None:
     fig, ax = get_figure(None)
 
-    bound_data = get_scattered_energy_change_against_k(
+    bound_data = get_thermal_scattered_energy_change_against_k(
         system,
         config,
         nk_points=nk_points,
@@ -490,19 +501,122 @@ def plot_scattered_energy_change_comparison(
 
     ax.plot(k_points_squared, bound_data["data"], "blue", label="Bound")
 
-    free_system = PeriodicSystem(
-        id=system.id,
-        barrier_energy=0,
-        lattice_constant=system.lattice_constant,
-        mass=system.mass,
-    )
-    free_data = get_scattered_energy_change_against_k(
+    free_system = system.as_free_system()
+    free_data = get_thermal_scattered_energy_change_against_k(
         free_system,
         config,
         nk_points=nk_points,
         n_repeats=1,
     )
     ax.plot(k_points_squared, free_data["data"], "orange", label="Free")
+
+    fig.legend()
+    fig.show()
+    input()
+
+
+def plot_scattered_energy_change_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    state: StateVector[Any],
+    *,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    fig, ax = get_figure(None)
+
+    bound_data = get_scattered_energy_change_against_k(
+        system,
+        config,
+        state,
+        nk_points=nk_points,
+    )
+
+    k_points = bound_data["basis"].k_points
+    k_points_squared = np.square(k_points)
+
+    ax.plot(k_points_squared, bound_data["data"], label="Quadratic")
+    fig.legend()
+    ax.set_ylabel("Energy change")
+    ax.set_xlabel("k^2")
+    fig.show()
+
+    fig, ax = get_figure(None)
+    ax.plot(k_points, bound_data["data"], label="Linear")
+    ax.set_ylabel("Energy change")
+    ax.set_xlabel("k")
+    fig.legend()
+    fig.show()
+    input()
+
+
+def plot_occupation_against_energy_comparison(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    mass_ratio: float,
+    direction: tuple[int, ...] | None = None,
+) -> None:
+    direction = tuple(1 for _ in config.shape) if direction is None else direction
+
+    hamiltonian = get_hamiltonian(system, config)
+    hamiltonian_data = hamiltonian["data"]
+    hamiltonian_data = hamiltonian_data.reshape((config.n_bands, np.prod(config.shape)))
+    averaged_hamiltonian_data = np.average(hamiltonian_data, 1)
+
+    state = get_random_boltzmann_state(system, config)
+    operator = get_periodic_x_operator(state["basis"], direction)
+    state = convert_state_vector_to_basis(
+        apply_operator_to_state(operator, state),
+        hamiltonian["basis"][0],
+    )
+    occupation = np.square(np.abs(state["data"]))
+
+    occupation = occupation.reshape((config.n_bands, np.prod(config.shape)))
+    averaged_occupation = np.average(occupation, 1)
+
+    fig, ax = get_figure(None)
+    ax.plot(averaged_hamiltonian_data, averaged_occupation, label="Normal mass")
+
+    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
+    low_energy = hbar * hbar * k_length * k_length / (2 * system.mass)
+    maxi = max(averaged_occupation)
+
+    system.mass = system.mass * mass_ratio
+
+    hamiltonian = get_hamiltonian(system, config)
+    hamiltonian_data = hamiltonian["data"]
+    hamiltonian_data = hamiltonian_data.reshape((config.n_bands, np.prod(config.shape)))
+    averaged_hamiltonian_data = np.average(hamiltonian_data, 1)
+
+    state = get_random_boltzmann_state(system, config)
+    operator = get_periodic_x_operator(state["basis"], direction)
+    state = convert_state_vector_to_basis(
+        apply_operator_to_state(operator, state),
+        hamiltonian["basis"][0],
+    )
+    occupation = np.square(np.abs(state["data"]))
+
+    occupation = occupation.reshape((config.n_bands, np.prod(config.shape)))
+    averaged_occupation = np.average(occupation, 1)
+
+    maxi1 = max(averaged_occupation)
+    maxi = max(maxi, maxi1)
+    ax.plot(
+        averaged_hamiltonian_data,
+        averaged_occupation,
+        label="%.2f mass" % mass_ratio,
+    )
+
+    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
+    high_energy = hbar * hbar * k_length * k_length / (2 * system.mass)
+
+    line = [0, maxi]
+    ax.plot([system.barrier_energy for _i in line], line, "g--")
+    ax.plot([low_energy for _i in line], line, "k--")
+    ax.plot([high_energy for _i in line], line, "k--")
+    ax.set_xlabel("Energy/J")
+    ax.set_ylabel("Band averaged occupation")
 
     fig.legend()
     fig.show()

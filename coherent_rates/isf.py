@@ -73,9 +73,8 @@ _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
 _B1 = TypeVar("_B1", bound=BasisLike[Any, Any])
 _B2 = TypeVar("_B2", bound=BasisLike[Any, Any])
 
-_SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
-_BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
+_BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 _ESB0 = TypeVar("_ESB0", bound=ExplicitStackedBasisWithLength[Any, Any])
 
 
@@ -313,7 +312,7 @@ def get_band_resolved_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _BT0,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[TupleBasisLike[BasisLike[Any, Any], _BT0]]:
@@ -441,11 +440,12 @@ class MomentumBasis(FundamentalBasis[Any]):  # noqa: D101
 def get_free_particle_time(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    n_k: tuple[int, ...],
+    direction: tuple[int, ...] | None = None,
 ) -> float:
+    direction = tuple(1 for _ in config.shape) if direction is None else direction
     basis = system.get_potential(config.shape, config.resolution)["basis"]
     dk_stacked = BasisUtil(basis).dk_stacked
-    k = np.linalg.norm(np.einsum("i,ij->j", n_k, dk_stacked))
+    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
 
 
@@ -523,30 +523,38 @@ def get_ak_data(
 
 def _get_scattered_energy_change(
     hamiltonian: SingleBasisDiagonalOperator[_BV0],
+    state: StateVector[Any],
+    direction: tuple[int, ...] | None = None,
+) -> float:
+    hamiltonian_operator = as_operator(hamiltonian)
+    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
+
+    energy = np.real(calculate_expectation(hamiltonian_operator, state))
+    scattered_state = apply_operator_to_state(operator, state)
+    scattered_energy = calculate_expectation(
+        hamiltonian_operator,
+        scattered_state,
+    )
+
+    return scattered_energy - energy
+
+
+def _get_thermal_scattered_energy_change(
+    hamiltonian: SingleBasisDiagonalOperator[_BV0],
     temperature: float,
     direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 10,
 ) -> ValueList[FundamentalBasis[int]]:
-    hamiltonian_operator = as_operator(hamiltonian)
-    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
-
-    scattered_energy = np.zeros(n_repeats, dtype=np.complex128)
+    energy_change = np.zeros(n_repeats, dtype=np.complex128)
     for i in range(n_repeats):
         state = _get_random_boltzmann_state_from_hamiltonian(hamiltonian, temperature)
-        scattered_state = apply_operator_to_state(operator, state)
-        scattered_energy[i] = calculate_expectation(
-            hamiltonian_operator,
-            scattered_state,
-        )
+        energy_change[i] = _get_scattered_energy_change(hamiltonian, state, direction)
 
-    state = _get_random_boltzmann_state_from_hamiltonian(hamiltonian, temperature)
-    energy = np.real(calculate_expectation(hamiltonian_operator, state))
-
-    return {"basis": FundamentalBasis(n_repeats), "data": scattered_energy - energy}
+    return {"basis": FundamentalBasis(n_repeats), "data": energy_change}
 
 
-def get_scattered_energy_change_against_k(
+def get_thermal_scattered_energy_change_against_k(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
@@ -558,13 +566,32 @@ def get_scattered_energy_change_against_k(
     energy_change = np.zeros(len(nk_points), dtype=np.complex128)
     for i, k_point in enumerate(nk_points):
         energy_change[i] = np.average(
-            _get_scattered_energy_change(
+            _get_thermal_scattered_energy_change(
                 hamiltonian,
                 config.temperature,
                 k_point,
                 n_repeats=n_repeats,
             )["data"],
         )
+
+    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    basis = MomentumBasis(k_points)
+    return {"data": energy_change, "basis": basis}
+
+
+def get_scattered_energy_change_against_k(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    state: StateVector[Any],
+    *,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> ValueList[MomentumBasis]:
+    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    hamiltonian = get_hamiltonian(system, config)
+    energy_change = np.zeros(len(nk_points), dtype=np.complex128)
+    for i, k_point in enumerate(nk_points):
+        energy_change[i] = _get_scattered_energy_change(hamiltonian, state, k_point)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
