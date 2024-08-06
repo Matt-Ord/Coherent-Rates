@@ -7,8 +7,13 @@ from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 import numpy as np
 from scipy.constants import Boltzmann
 from scipy.optimize import curve_fit
-from surface_potential_analysis.basis.basis import FundamentalBasis
+from surface_potential_analysis.basis.basis import (
+    FundamentalBasis,
+)
 from surface_potential_analysis.basis.basis_like import BasisLike
+from surface_potential_analysis.basis.explicit_basis import (
+    ExplicitStackedBasisWithLength,
+)
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
     TupleBasis,
@@ -21,11 +26,8 @@ from surface_potential_analysis.basis.util import BasisUtil
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
-from surface_potential_analysis.operator.conversion import convert_operator_to_basis
-from surface_potential_analysis.operator.operations import apply_operator_to_states
 from surface_potential_analysis.operator.operator import (
     SingleBasisDiagonalOperator,
-    SingleBasisOperator,
     apply_operator_to_state,
     as_operator,
 )
@@ -36,17 +38,23 @@ from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
-from surface_potential_analysis.util.decorators import npy_cached_dict
+from surface_potential_analysis.util.decorators import npy_cached_dict, timed
 from surface_potential_analysis.util.util import get_measured_data
 
+from coherent_rates.scattering_operator import (
+    SparseScatteringOperator,
+    apply_scattering_operator_to_state,
+    apply_scattering_operator_to_states,
+    get_periodic_x_operator_sparse,
+)
 from coherent_rates.system import get_hamiltonian
 
 if TYPE_CHECKING:
-    from surface_potential_analysis.basis.explicit_basis import (
-        ExplicitStackedBasisWithLength,
-    )
     from surface_potential_analysis.basis.stacked_basis import (
         TupleBasisLike,
+    )
+    from surface_potential_analysis.operator.operator import (
+        SingleBasisDiagonalOperator,
     )
     from surface_potential_analysis.state_vector.eigenstate_list import (
         StatisticalValueList,
@@ -68,26 +76,28 @@ _B2 = TypeVar("_B2", bound=BasisLike[Any, Any])
 _SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 _BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
+_ESB0 = TypeVar("_ESB0", bound=ExplicitStackedBasisWithLength[Any, Any])
+
 
 def _get_isf_pair_states_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
-    operator: SingleBasisOperator[_B1],
-    initial_state: StateVector[_B2],
+    operator: SparseScatteringOperator[_ESB0, _ESB0],
+    initial_state: StateVector[_B0],
     times: _BT0,
-) -> tuple[StateVectorList[_BT0, _B0], StateVectorList[_BT0, _B0]]:
+) -> tuple[StateVectorList[_BT0, Any], StateVectorList[_BT0, Any]]:
     state_evolved = solve_schrodinger_equation_diagonal(
         initial_state,
         times,
         hamiltonian,
     )
-    # Make sure we only pay the cost of converting the operator once
-    operator_converted = convert_operator_to_basis(operator, hamiltonian["basis"])
-    state_evolved_scattered = apply_operator_to_states(
-        operator_converted,
+
+    state_evolved_scattered = apply_scattering_operator_to_states(
+        operator,
         state_evolved,
     )
 
-    state_scattered = apply_operator_to_state(operator, initial_state)
+    state_scattered = apply_scattering_operator_to_state(operator, initial_state)
+
     state_scattered_evolved = solve_schrodinger_equation_diagonal(
         state_scattered,
         times,
@@ -100,15 +110,16 @@ def _get_isf_pair_states_from_hamiltonian(
 def get_isf_pair_states(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[_SBV0],
+    initial_state: StateVector[_B1],
     times: _BT0,
     direction: tuple[int, ...] | None = None,
 ) -> tuple[StateVectorList[_BT0, Any], StateVectorList[_BT0, Any]]:
-    operator = get_periodic_x_operator(
-        initial_state["basis"],
+    hamiltonian = get_hamiltonian(system, config)
+    operator = get_periodic_x_operator_sparse(
+        hamiltonian["basis"][1],
         direction=direction,
     )
-    hamiltonian = get_hamiltonian(system, config)
+
     return _get_isf_pair_states_from_hamiltonian(
         hamiltonian,
         operator,
@@ -117,10 +128,11 @@ def get_isf_pair_states(
     )
 
 
+@timed
 def _get_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
-    operator: SingleBasisOperator[Any],
-    initial_state: StateVector[Any],
+    operator: SparseScatteringOperator[_ESB0, _ESB0],
+    initial_state: StateVector[_B1],
     times: _BT0,
 ) -> ValueList[_BT0]:
     (
@@ -157,8 +169,8 @@ def _get_band_resolved_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[
         ExplicitStackedBasisWithLength[TupleBasisLike[_B0, Any], Any]
     ],
-    operator: SingleBasisOperator[Any],
-    initial_state: StateVector[Any],
+    operator: SparseScatteringOperator[_ESB0, _ESB0],
+    initial_state: StateVector[_B1],
     times: _BT0,
 ) -> ValueList[TupleBasis[_B0, _BT0]]:
     (
@@ -186,15 +198,15 @@ def _get_band_resolved_isf_from_hamiltonian(
 def get_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[_SBV0],
+    initial_state: StateVector[_B1],
     times: _BT0,
     direction: tuple[int, ...] | None = None,
 ) -> ValueList[_BT0]:
-    operator = get_periodic_x_operator(
-        initial_state["basis"],
+    hamiltonian = get_hamiltonian(system, config)
+    operator = get_periodic_x_operator_sparse(
+        hamiltonian["basis"][1],
         direction=direction,
     )
-    hamiltonian = get_hamiltonian(system, config)
 
     return _get_isf_from_hamiltonian(hamiltonian, operator, initial_state, times)
 
@@ -247,7 +259,7 @@ def get_random_boltzmann_state(
 
 
 def _get_boltzmann_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[_SBV0],
+    hamiltonian: SingleBasisDiagonalOperator[_ESB0],
     temperature: float,
     times: _BT0,
     direction: tuple[int, ...] | None = None,
@@ -257,9 +269,9 @@ def _get_boltzmann_isf_from_hamiltonian(
     isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
     # Convert the operator to the hamiltonian basis
     # to prevent conversion in each repeat
-    operator = convert_operator_to_basis(
-        get_periodic_x_operator(hamiltonian["basis"][0], direction),
-        hamiltonian["basis"],
+    operator = get_periodic_x_operator_sparse(
+        hamiltonian["basis"][1],
+        direction=direction,
     )
     for i in range(n_repeats):
         state = _get_random_boltzmann_state_from_hamiltonian(
@@ -286,31 +298,15 @@ def get_boltzmann_isf(
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[_BT0]:
-    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
+    direction = tuple(1 for _ in config.shape) if direction is None else direction
     hamiltonian = get_hamiltonian(system, config)
-    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
-    converted_operator = convert_operator_to_basis(operator, hamiltonian["basis"])
-
-    for i in range(n_repeats):
-        state = _get_random_boltzmann_state_from_hamiltonian(
-            hamiltonian,
-            config.temperature,
-        )
-        data = _get_isf_from_hamiltonian(
-            hamiltonian,
-            converted_operator,
-            state,
-            times,
-        )
-        isf_data[i, :] = data["data"]
-
-    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
-    sd = np.std(isf_data, axis=0, dtype=np.complex128)
-    return {
-        "data": mean,
-        "basis": times,
-        "standard_deviation": sd,
-    }
+    return _get_boltzmann_isf_from_hamiltonian(
+        hamiltonian,
+        config.temperature,
+        times,
+        direction,
+        n_repeats=n_repeats,
+    )
 
 
 def get_band_resolved_boltzmann_isf(
@@ -323,8 +319,7 @@ def get_band_resolved_boltzmann_isf(
 ) -> StatisticalValueList[TupleBasisLike[BasisLike[Any, Any], _BT0]]:
     hamiltonian = get_hamiltonian(system, config)  #
     bands = hamiltonian["basis"][0].vectors["basis"][0][0]
-    operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
-    converted_operator = convert_operator_to_basis(operator, hamiltonian["basis"])
+    operator = get_periodic_x_operator_sparse(hamiltonian["basis"][0], direction)
 
     isf_data = np.zeros((n_repeats, bands.n * times.n), dtype=np.complex128)
 
@@ -335,7 +330,7 @@ def get_band_resolved_boltzmann_isf(
         )
         data = _get_band_resolved_isf_from_hamiltonian(
             hamiltonian,
-            converted_operator,
+            operator,
             state,
             times,
         )
@@ -499,12 +494,12 @@ def get_ak_data(
 
     rates = np.zeros(len(nk_points), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
-    for i, nk_point in enumerate(nk_points):
+    for i, direction in enumerate(nk_points):
         isf = _get_boltzmann_isf_from_hamiltonian(
             hamiltonian,
             config.temperature,
             times,
-            nk_point,
+            direction,
             n_repeats=10,
         )
 
