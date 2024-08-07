@@ -31,10 +31,14 @@ from surface_potential_analysis.state_vector.plot import (
     plot_state_2d_x,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
+
     plot_all_value_list_against_time,
     plot_split_value_list_against_time,
     plot_value_list_against_momentum,
     plot_value_list_against_momentum_squared,
+    plot_split_value_list_against_frequency,
+    plot_value_list_against_frequency,
+
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
@@ -64,6 +68,7 @@ from coherent_rates.isf import (
     get_thermal_scattered_energy_change_against_k,
 )
 from coherent_rates.system import (
+    FreeSystem,
     PeriodicSystem,
     PeriodicSystem1d,
     PeriodicSystem2d,
@@ -348,7 +353,7 @@ def _get_default_times(
     return EvenlySpacedTimeBasis(
         100,
         1,
-        0,
+        -50,
         4 * get_free_particle_time(system, config, direction),
     )
 
@@ -360,7 +365,6 @@ def plot_boltzmann_isf(
     direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 10,
-    measure: Measure | None = None,
 ) -> None:
     times = _get_default_times(system, config, direction) if times is None else times
     data = get_boltzmann_isf(
@@ -370,21 +374,28 @@ def plot_boltzmann_isf(
         direction,
         n_repeats=n_repeats,
     )
-    if measure is None:
-        fig, ax, line = plot_value_list_against_time(data)
-        line.set_label("abs ISF")
 
-        fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
-        line.set_label("real ISF")
+    fig, ax, line = plot_value_list_against_time(data)
+    line.set_label("abs ISF")
 
-        fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
-        line.set_label("imag ISF")
-        ax.legend()
-    else:
-        fig, ax, line = plot_value_list_against_time(data, measure=measure)
-    ax.set_ylabel("ISF")
+    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="real")
+    line.set_label("real ISF")
+
+    fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
+    line.set_label("imag ISF")
+    ax.legend()
+
+    ax.set_title("Plot of the ISF against time")
 
     fig.show()
+
+    fig, ax, line = plot_value_list_against_frequency(data)
+    fig, ax, line = plot_value_list_against_frequency(data, measure="imag", ax=ax)
+    fig, ax, line = plot_value_list_against_frequency(data, measure="real", ax=ax)
+    ax.set_title("Plot of the fourier transform of the ISF against time")
+    fig.show()
+
+    input()
 
 
 def plot_band_resolved_boltzmann_isf(
@@ -407,8 +418,8 @@ def plot_band_resolved_boltzmann_isf(
     fig, _ = plot_split_value_list_against_time(resolved_data, measure="real")
 
     fig.show()
-    fig, _ = plot_all_value_list_against_time(resolved_data, measure="real")
-
+    fig, ax = plot_split_value_list_against_frequency(resolved_data)
+    ax.set_title("Plot of the fourier transform of the ISF against time")
     fig.show()
     input()
 
@@ -433,27 +444,39 @@ def _get_alpha_deltak_linear_fit(
 ) -> _AlphaDeltakFitData:
     k_points = values["basis"].k_points
     rates = values["data"]
-    gradient, intercept = np.polyfit(k_points, rates, 1)
-    return _AlphaDeltakFitData(gradient, intercept)
+    fit = np.polynomial.Polynomial.fit(
+        k_points,
+        rates,
+        deg=[1],
+        domain=(0, np.max(k_points)),
+        window=(0, np.max(k_points)),
+    ).coef
+    return _AlphaDeltakFitData(fit[1], fit[0])
 
 
 def _plot_alpha_deltak(
     data: ValueList[MomentumBasis],
     *,
     ax: Axes | None = None,
-) -> tuple[Figure, Axes]:
+) -> tuple[Figure, Axes, Line2D]:
     k_points = data["basis"].k_points
 
     fig, ax = get_figure(ax)
 
-    ax.plot(k_points, data["data"], "bo", label="Bound")
+    (line,) = ax.plot(k_points, data["data"])
+    line.set_linestyle("")
+    line.set_marker("x")
 
     fit = _get_alpha_deltak_linear_fit(data)
     x_fit = np.array([0, k_points[len(k_points) - 1] * 1.2], dtype=np.float64)
     y_fit = fit.gradient * x_fit + fit.intercept
-    ax.plot(x_fit, y_fit, "b")
+    (fit_line,) = ax.plot(x_fit, y_fit)
+    fit_line.set_color(line.get_color())
 
-    return fig, ax
+    ax.set_xlabel("delta k /$m^{-1}$")
+    ax.set_ylabel("rate")
+
+    return fig, ax, line
 
 
 def plot_alpha_deltak_comparison(
@@ -464,14 +487,18 @@ def plot_alpha_deltak_comparison(
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
     data = get_ak_data(system, config, nk_points=nk_points, times=times)
-    fig, ax = _plot_alpha_deltak(data)
+    fig, ax, line = _plot_alpha_deltak(data)
+    line.set_label("bound system")
 
-    free_system = system.as_free_system()
+    free_system = FreeSystem(system)
     free_data = get_ak_data(free_system, config, nk_points=nk_points, times=times)
-    _, _ = _plot_alpha_deltak(free_data, ax=ax)
+    _, _, line = _plot_alpha_deltak(free_data, ax=ax)
+    line.set_label("free system")
 
     ax.set_ylim(0, ax.get_ylim()[1])
     ax.set_xlim(0, ax.get_xlim()[1])
+    ax.legend()
+    ax.set_title("plot of rate against delta k, comparing to a free particle")
 
     print(  # noqa: T201
         "Bound mass =",
