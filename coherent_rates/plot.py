@@ -571,15 +571,19 @@ def plot_occupation_against_energy_comparison(
     occupation = np.square(np.abs(state["data"]))
 
     occupation = occupation.reshape((config.n_bands, np.prod(config.shape)))
-    averaged_occupation = np.average(occupation, 1)
+    total_band_occupation = np.sum(occupation, 1)
 
     fig, ax = get_figure(None)
-    ax.plot(averaged_hamiltonian_data, averaged_occupation, label="Normal mass")
+    ax.plot(
+        averaged_hamiltonian_data,
+        total_band_occupation,
+        label="Normal mass",
+        color="b",
+    )
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
     low_energy = hbar * hbar * k_length * k_length / (2 * system.mass)
-    maxi = max(averaged_occupation)
 
     system.mass = system.mass * mass_ratio
 
@@ -597,27 +601,26 @@ def plot_occupation_against_energy_comparison(
     occupation = np.square(np.abs(state["data"]))
 
     occupation = occupation.reshape((config.n_bands, np.prod(config.shape)))
-    averaged_occupation = np.average(occupation, 1)
-
-    maxi1 = max(averaged_occupation)
-    maxi = max(maxi, maxi1)
+    total_band_occupation = np.sum(occupation, 1)
     ax.plot(
         averaged_hamiltonian_data,
-        averaged_occupation,
+        total_band_occupation,
         label="%.2f mass" % mass_ratio,
+        color="g",
     )
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
     high_energy = hbar * hbar * k_length * k_length / (2 * system.mass)
 
-    line = [0, maxi]
-    ax.plot([system.barrier_energy for _i in line], line, "g--")
-    ax.plot([low_energy for _i in line], line, "k--")
-    ax.plot([high_energy for _i in line], line, "k--")
-    ax.set_xlabel("Energy/J")
-    ax.set_ylabel("Band averaged occupation")
+    ax.axvline(system.barrier_energy, color="r", ls="--")
+    ax.axvline(low_energy, color="b", ls="--")
+    ax.axvline(high_energy, color="g", ls="--")
 
-    fig.legend()
+    ax.set_xlabel("Energy/J")
+    ax.set_ylabel("Band occupation")
+    ax.set_xlim(0, 10 * system.barrier_energy)
+    ax.set_ylim(0)
+    ax.legend()
     fig.show()
     input()
