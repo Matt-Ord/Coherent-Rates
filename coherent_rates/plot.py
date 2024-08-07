@@ -31,14 +31,11 @@ from surface_potential_analysis.state_vector.plot import (
     plot_state_2d_x,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
-
-    plot_all_value_list_against_time,
+    plot_split_value_list_against_frequency,
     plot_split_value_list_against_time,
+    plot_value_list_against_frequency,
     plot_value_list_against_momentum,
     plot_value_list_against_momentum_squared,
-    plot_split_value_list_against_frequency,
-    plot_value_list_against_frequency,
-
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
@@ -390,8 +387,12 @@ def plot_boltzmann_isf(
     fig.show()
 
     fig, ax, line = plot_value_list_against_frequency(data)
+    line.set_label("abs ISF")
     fig, ax, line = plot_value_list_against_frequency(data, measure="imag", ax=ax)
+    line.set_label("imag ISF")
     fig, ax, line = plot_value_list_against_frequency(data, measure="real", ax=ax)
+    line.set_label("real ISF")
+    ax.legend()
     ax.set_title("Plot of the fourier transform of the ISF against time")
     fig.show()
 
@@ -532,7 +533,7 @@ def plot_thermal_scattered_energy_change_comparison(
     line.set_color("blue")
     line.set_label("Bound")
 
-    free_system = system.as_free_system()
+    free_system = FreeSystem(system)
     free_data = get_thermal_scattered_energy_change_against_k(
         free_system,
         config,
