@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.constants import Boltzmann, hbar
+from scipy.constants import Boltzmann
 from surface_potential_analysis.basis.basis_like import BasisLike
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisLike,
@@ -33,6 +33,9 @@ from surface_potential_analysis.state_vector.plot import (
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
     plot_all_value_list_against_time,
+    plot_split_value_list_against_time,
+    plot_value_list_against_momentum,
+    plot_value_list_against_momentum_squared,
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
@@ -399,6 +402,9 @@ def plot_band_resolved_boltzmann_isf(
         direction,
         n_repeats=n_repeats,
     )
+    fig, _ = plot_split_value_list_against_time(resolved_data, measure="real")
+
+    fig.show()
     fig, _ = plot_all_value_list_against_time(resolved_data, measure="real")
 
     fig.show()
@@ -488,18 +494,14 @@ def plot_thermal_scattered_energy_change_comparison(
     *,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
-    fig, ax = get_figure(None)
-
     bound_data = get_thermal_scattered_energy_change_against_k(
         system,
         config,
         nk_points=nk_points,
     )
-
-    k_points = bound_data["basis"].k_points
-    k_points_squared = np.square(k_points)
-
-    ax.plot(k_points_squared, bound_data["data"], "blue", label="Bound")
+    fig, ax, line = plot_value_list_against_momentum_squared(bound_data)
+    line.set_color("blue")
+    line.set_label("Bound")
 
     free_system = system.as_free_system()
     free_data = get_thermal_scattered_energy_change_against_k(
@@ -508,9 +510,11 @@ def plot_thermal_scattered_energy_change_comparison(
         nk_points=nk_points,
         n_repeats=1,
     )
-    ax.plot(k_points_squared, free_data["data"], "orange", label="Free")
-
-    fig.legend()
+    fig, ax, line1 = plot_value_list_against_momentum_squared(free_data, ax=ax)
+    line1.set_color("orange")
+    line1.set_label("Free")
+    ax.legend()
+    ax.set_ylabel("Energy change/J")
     fig.show()
     input()
 
@@ -522,30 +526,22 @@ def plot_scattered_energy_change_state(
     *,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
-    fig, ax = get_figure(None)
-
     bound_data = get_scattered_energy_change_against_k(
         system,
         config,
         state,
         nk_points=nk_points,
     )
-
-    k_points = bound_data["basis"].k_points
-    k_points_squared = np.square(k_points)
-
-    ax.plot(k_points_squared, bound_data["data"], label="Quadratic")
-    fig.legend()
-    ax.set_ylabel("Energy change")
-    ax.set_xlabel("k^2")
+    fig, ax, line = plot_value_list_against_momentum_squared(bound_data)
+    ax.set_title("Quadratic")
+    ax.set_ylabel("Energy change/J")
     fig.show()
 
-    fig, ax = get_figure(None)
-    ax.plot(k_points, bound_data["data"], label="Linear")
-    ax.set_ylabel("Energy change")
-    ax.set_xlabel("k")
-    fig.legend()
+    fig, ax, line = plot_value_list_against_momentum(bound_data)
+    ax.set_title("Linear")
+    ax.set_ylabel("Energy change/J")
     fig.show()
+
     input()
 
 
@@ -582,8 +578,8 @@ def plot_occupation_against_energy_comparison(
     )
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
-    low_energy = hbar * hbar * k_length * k_length / (2 * system.mass)
+    np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
+    low_energy = np.average(hamiltonian_data, weights=occupation)
 
     system.mass = system.mass * mass_ratio
 
@@ -610,8 +606,8 @@ def plot_occupation_against_energy_comparison(
     )
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
-    high_energy = hbar * hbar * k_length * k_length / (2 * system.mass)
+    np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
+    high_energy = np.average(hamiltonian_data, weights=occupation)
 
     ax.axvline(system.barrier_energy, color="r", ls="--")
     ax.axvline(low_energy, color="b", ls="--")
