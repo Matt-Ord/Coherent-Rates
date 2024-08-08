@@ -6,7 +6,13 @@ from typing import TYPE_CHECKING, Any, TypeVar
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.constants import Boltzmann
+from surface_potential_analysis.basis.basis_like import BasisLike
+from surface_potential_analysis.basis.stacked_basis import (
+    StackedBasisLike,
+    StackedBasisWithVolumeLike,
+)
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+from surface_potential_analysis.operator.operator import apply_operator_to_state
 from surface_potential_analysis.potential.plot import (
     plot_potential_1d_x,
     plot_potential_2d_x,
@@ -15,15 +21,18 @@ from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
     animate_state_over_list_2d_x,
+    get_periodic_x_operator,
     plot_state_1d_k,
     plot_state_1d_x,
     plot_state_2d_k,
     plot_state_2d_x,
+    plot_total_band_occupation_against_energy,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
     plot_split_value_list_against_frequency,
     plot_split_value_list_against_time,
     plot_value_list_against_frequency,
+    plot_value_list_against_momentum,
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
@@ -32,6 +41,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     state_vector_list_into_iter,
 )
 from surface_potential_analysis.util.plot import Scale, get_figure
+from surface_potential_analysis.util.squared_scale import SquaredScale
 from surface_potential_analysis.wavepacket.plot import (
     get_wavepacket_effective_mass,
     plot_occupation_against_band,
@@ -48,7 +58,9 @@ from coherent_rates.isf import (
     get_boltzmann_isf,
     get_free_particle_time,
     get_isf_pair_states,
+    get_random_boltzmann_state,
     get_scattered_energy_change_against_k,
+    get_thermal_scattered_energy_change_against_k,
 )
 from coherent_rates.system import (
     FreeSystem,
@@ -328,7 +340,7 @@ def plot_pair_system_evolution_1d(
 def _get_default_times(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    direction: tuple[int, ...] = (1,),
+    direction: tuple[int, ...] | None = None,
 ) -> EvenlySpacedTimeBasis[Any, Any, Any]:
     return EvenlySpacedTimeBasis(
         100,
@@ -346,8 +358,6 @@ def plot_boltzmann_isf(
     *,
     n_repeats: int = 10,
 ) -> None:
-    direction = tuple(1 for _ in config.shape) if direction is None else direction
-
     times = _get_default_times(system, config, direction) if times is None else times
     data = get_boltzmann_isf(
         system,
@@ -372,8 +382,12 @@ def plot_boltzmann_isf(
     fig.show()
 
     fig, ax, line = plot_value_list_against_frequency(data)
+    line.set_label("abs ISF")
     fig, ax, line = plot_value_list_against_frequency(data, measure="imag", ax=ax)
+    line.set_label("imag ISF")
     fig, ax, line = plot_value_list_against_frequency(data, measure="real", ax=ax)
+    line.set_label("real ISF")
+    ax.legend()
     ax.set_title("Plot of the fourier transform of the ISF against time")
     fig.show()
 
@@ -384,7 +398,7 @@ def plot_band_resolved_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-    direction: tuple[int] = (1,),
+    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 10,
 ) -> None:
@@ -400,7 +414,6 @@ def plot_band_resolved_boltzmann_isf(
     fig, _ = plot_split_value_list_against_time(resolved_data, measure="real")
 
     fig.show()
-
     fig, ax = plot_split_value_list_against_frequency(resolved_data)
     ax.set_title("Plot of the fourier transform of the ISF against time")
     fig.show()
@@ -500,39 +513,99 @@ def plot_alpha_deltak_comparison(
     input()
 
 
-def plot_scattered_energy_change_comparison(
+def plot_thermal_scattered_energy_change_comparison(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
-    fig, ax = get_figure(None)
-
-    bound_data = get_scattered_energy_change_against_k(
+    bound_data = get_thermal_scattered_energy_change_against_k(
         system,
         config,
         nk_points=nk_points,
     )
+    fig, ax, line = plot_value_list_against_momentum(bound_data)
+    line.set_label("Bound")
 
-    k_points = bound_data["basis"].k_points
-    k_points_squared = np.square(k_points)
-
-    ax.plot(k_points_squared, bound_data["data"], "blue", label="Bound")
-
-    free_system = PeriodicSystem(
-        id=system.id,
-        barrier_energy=0,
-        lattice_constant=system.lattice_constant,
-        mass=system.mass,
-    )
-    free_data = get_scattered_energy_change_against_k(
+    free_system = FreeSystem(system)
+    free_data = get_thermal_scattered_energy_change_against_k(
         free_system,
         config,
         nk_points=nk_points,
         n_repeats=1,
     )
-    ax.plot(k_points_squared, free_data["data"], "orange", label="Free")
+    fig, ax, line1 = plot_value_list_against_momentum(free_data, ax=ax)
+    line1.set_label("Free")
 
-    fig.legend()
+    ax.legend()
+    ax.set_xscale(SquaredScale(axis=None))
+    ax.set_ylabel("Energy change /J")
+
+    fig.show()
+    input()
+
+
+def plot_scattered_energy_change_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    state: StateVector[Any],
+    *,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    bound_data = get_scattered_energy_change_against_k(
+        system,
+        config,
+        state,
+        nk_points=nk_points,
+    )
+    fig, ax, _ = plot_value_list_against_momentum(bound_data)
+    ax.set_xscale(SquaredScale(axis=None))
+    ax.set_title("Quadratic")
+    ax.set_ylabel("Energy change /J")
+    fig.show()
+
+    fig, ax, _ = plot_value_list_against_momentum(bound_data)
+    ax.set_title("Linear")
+    ax.set_ylabel("Energy change /J")
+    fig.show()
+
+    input()
+
+
+def plot_occupation_against_energy_comparison(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    mass_ratio: float,
+    direction: tuple[int, ...] | None = None,
+) -> None:
+    direction = tuple(1 for _ in config.shape) if direction is None else direction
+
+    hamiltonian = get_hamiltonian(system, config)
+
+    state = get_random_boltzmann_state(system, config)
+    operator = get_periodic_x_operator(state["basis"], direction)
+    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
+
+    fig, ax, line = plot_total_band_occupation_against_energy(
+        hamiltonian,
+        scattered_state,
+    )
+    line.set_label("Normal mass")
+
+    system.mass = system.mass * mass_ratio
+    hamiltonian = get_hamiltonian(system, config)
+
+    fig, ax, line1 = plot_total_band_occupation_against_energy(
+        hamiltonian,
+        scattered_state,
+        ax=ax,
+    )
+    line1.set_label(f"{mass_ratio}$\\times$ mass")
+
+    ax.axvline(system.barrier_energy, color="black", ls="--")
+
+    ax.set_xlim(0, 10 * system.barrier_energy)
+    ax.set_ylim(0)
+    ax.legend()
     fig.show()
     input()
