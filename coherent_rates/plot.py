@@ -17,9 +17,6 @@ from surface_potential_analysis.potential.plot import (
     plot_potential_1d_x,
     plot_potential_2d_x,
 )
-from surface_potential_analysis.state_vector.conversion import (
-    convert_state_vector_to_basis,
-)
 from surface_potential_analysis.state_vector.plot import (
     animate_state_over_list_1d_k,
     animate_state_over_list_1d_x,
@@ -29,13 +26,13 @@ from surface_potential_analysis.state_vector.plot import (
     plot_state_1d_x,
     plot_state_2d_k,
     plot_state_2d_x,
+    plot_total_band_occupation_against_energy,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
     plot_split_value_list_against_frequency,
     plot_split_value_list_against_time,
     plot_value_list_against_frequency,
     plot_value_list_against_momentum,
-    plot_value_list_against_momentum_squared,
     plot_value_list_against_nx,
     plot_value_list_against_time,
 )
@@ -43,7 +40,8 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     get_state_vector,
     state_vector_list_into_iter,
 )
-from surface_potential_analysis.util.plot import Scale, get_figure, plot_data_1d
+from surface_potential_analysis.util.plot import Scale, get_figure
+from surface_potential_analysis.util.squared_scale import SquaredScale
 from surface_potential_analysis.wavepacket.plot import (
     get_wavepacket_effective_mass,
     plot_occupation_against_band,
@@ -80,9 +78,6 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
     from surface_potential_analysis.basis.basis_like import BasisLike
-    from surface_potential_analysis.basis.explicit_basis import (
-        ExplicitStackedBasisWithLength,
-    )
     from surface_potential_analysis.basis.stacked_basis import (
         StackedBasisLike,
         StackedBasisWithVolumeLike,
@@ -529,8 +524,7 @@ def plot_thermal_scattered_energy_change_comparison(
         config,
         nk_points=nk_points,
     )
-    fig, ax, line = plot_value_list_against_momentum_squared(bound_data)
-    line.set_color("blue")
+    fig, ax, line = plot_value_list_against_momentum(bound_data)
     line.set_label("Bound")
 
     free_system = FreeSystem(system)
@@ -540,11 +534,13 @@ def plot_thermal_scattered_energy_change_comparison(
         nk_points=nk_points,
         n_repeats=1,
     )
-    fig, ax, line1 = plot_value_list_against_momentum_squared(free_data, ax=ax)
-    line1.set_color("orange")
+    fig, ax, line1 = plot_value_list_against_momentum(free_data, ax=ax)
     line1.set_label("Free")
+
     ax.legend()
+    ax.set_xscale(SquaredScale(axis=None))
     ax.set_ylabel("Energy change /J")
+
     fig.show()
     input()
 
@@ -562,48 +558,18 @@ def plot_scattered_energy_change_state(
         state,
         nk_points=nk_points,
     )
-    fig, ax, line = plot_value_list_against_momentum_squared(bound_data)
+    fig, ax, _ = plot_value_list_against_momentum(bound_data)
+    ax.set_xscale(SquaredScale(axis=None))
     ax.set_title("Quadratic")
     ax.set_ylabel("Energy change /J")
     fig.show()
 
-    fig, ax, line = plot_value_list_against_momentum(bound_data)
+    fig, ax, _ = plot_value_list_against_momentum(bound_data)
     ax.set_title("Linear")
     ax.set_ylabel("Energy change /J")
     fig.show()
 
     input()
-
-
-def plot_band_occupation_against_energy(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    state: StateVector[ExplicitStackedBasisWithLength[Any, Any]],
-    *,
-    ax: Axes | None = None,
-    scale: Scale = "linear",
-    measure: Measure = "abs",
-) -> tuple[Figure, Axes, Line2D]:
-    hamiltonian = get_hamiltonian(system, config)
-    hamiltonian_data = hamiltonian["data"].reshape(
-        (config.n_bands, np.prod(config.shape)),
-    )
-    band_energies = np.average(hamiltonian_data, 1)
-
-    occupation = np.square(np.abs(state["data"]))
-    occupation = occupation.reshape((config.n_bands, np.prod(config.shape)))
-    band_occupation = np.sum(occupation, 1)
-    fig, ax, line = plot_data_1d(
-        band_occupation,
-        band_energies,
-        ax=ax,
-        scale=scale,
-        measure=measure,
-    )
-    ax.set_xlabel("Band Energy /J")
-    ax.set_ylabel("Band Occupation")
-
-    return fig, ax, line
 
 
 def plot_occupation_against_energy_comparison(
@@ -615,46 +581,28 @@ def plot_occupation_against_energy_comparison(
     direction = tuple(1 for _ in config.shape) if direction is None else direction
 
     hamiltonian = get_hamiltonian(system, config)
-    hamiltonian_data = hamiltonian["data"]
 
     state = get_random_boltzmann_state(system, config)
     operator = get_periodic_x_operator(state["basis"], direction)
-    state = convert_state_vector_to_basis(
-        apply_operator_to_state(operator, state),
-        hamiltonian["basis"][0],
+    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
+
+    fig, ax, line = plot_total_band_occupation_against_energy(
+        hamiltonian,
+        scattered_state,
     )
-
-    fig, ax, line = plot_band_occupation_against_energy(system, config, state)
     line.set_label("Normal mass")
-    line.set_color("blue")
-
-    occupation = np.square(np.abs(state["data"]))
-
-    low_energy = np.average(hamiltonian_data, weights=occupation)
 
     system.mass = system.mass * mass_ratio
-
     hamiltonian = get_hamiltonian(system, config)
-    hamiltonian_data = hamiltonian["data"]
 
-    state = get_random_boltzmann_state(system, config)
-    operator = get_periodic_x_operator(state["basis"], direction)
-    state = convert_state_vector_to_basis(
-        apply_operator_to_state(operator, state),
-        hamiltonian["basis"][0],
+    fig, ax, line1 = plot_total_band_occupation_against_energy(
+        hamiltonian,
+        scattered_state,
+        ax=ax,
     )
+    line1.set_label(f"{mass_ratio}$\\times$ mass")
 
-    fig, ax, line1 = plot_band_occupation_against_energy(system, config, state, ax=ax)
-    line1.set_label("%.2f mass" % mass_ratio)
-    line1.set_color("green")
-
-    occupation = np.square(np.abs(state["data"]))
-
-    high_energy = np.average(hamiltonian_data, weights=occupation)
-
-    ax.axvline(system.barrier_energy, color="r", ls="--")
-    ax.axvline(low_energy, color="b", ls="--")
-    ax.axvline(high_energy, color="g", ls="--")
+    ax.axvline(system.barrier_energy, color="black", ls="--")
 
     ax.set_xlim(0, 10 * system.barrier_energy)
     ax.set_ylim(0)
