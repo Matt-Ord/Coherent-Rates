@@ -383,6 +383,47 @@ def fit_abs_isf_to_gaussian(
     )
 
 
+@dataclass
+class GaussianConstantFitData:
+    """Represents the parameters from a Gaussian fit."""
+
+    constant: float
+    constant_error: float
+    amplitude: float
+    amplitude_error: float
+    width: float
+    width_error: float
+
+
+def fit_abs_isf_to_gaussian_constant(
+    values: ValueList[_BT0],
+) -> GaussianConstantFitData:
+    def gaussian(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        a: float,
+        b: float,
+        c: float,
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return a + b * np.exp(-1 * np.square(x / c) / 2)
+
+    x_data = BasisUtil(values["basis"]).nx_points
+    y_data = get_measured_data(values["data"], "abs")
+    parameters, covariance = curve_fit(gaussian, x_data, y_data)
+    fit_A = parameters[0]
+    fit_B = parameters[1]
+    fit_C = parameters[2]
+    dt = values["basis"].times[1]
+
+    return GaussianConstantFitData(
+        fit_A,
+        np.sqrt(covariance[0][0]),
+        fit_B,
+        np.sqrt(covariance[1][1]),
+        fit_C * dt,
+        np.sqrt(covariance[2][2]) * dt,
+    )
+
+
 def fit_abs_isf_to_double_gaussian(
     values: ValueList[_BT0],
 ) -> tuple[GaussianFitData, GaussianFitData]:
@@ -417,6 +458,77 @@ def fit_abs_isf_to_double_gaussian(
             fit_A2,
             np.sqrt(covariance[2][2]),
             fit_B2 * dt,
+            np.sqrt(covariance[3][3]) * dt,
+        ),
+    )
+
+
+@dataclass
+class ExponentialFitData:
+    """Represents the parameters from A+Be^-x/C fit."""
+
+    amplitude: float
+    amplitude_error: float
+    time_constant: float
+    time_constant_error: float
+
+
+def fit_abs_isf_to_exponential(
+    values: ValueList[_BT0],
+) -> ExponentialFitData:
+    def exponential(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        b: float,
+        c: float,
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return (1 - b) + b * np.exp(-1 * x / c)
+
+    x_data = BasisUtil(values["basis"]).nx_points
+    y_data = get_measured_data(values["data"], "abs")
+    parameters, covariance = curve_fit(exponential, x_data, y_data)
+
+    fit_B = parameters[0]
+    fit_C = parameters[1]
+    dt = values["basis"].times[1]
+
+    return ExponentialFitData(
+        fit_B,
+        np.sqrt(covariance[0][0]),
+        fit_C * dt,
+        np.sqrt(covariance[1][1]) * dt,
+    )
+
+
+def fit_abs_isf_to_exponential_and_gaussian(
+    values: ValueList[_BT0],
+) -> tuple[ExponentialFitData, GaussianFitData]:
+    def exponential_and_gaussian(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        b: float,
+        c: float,
+        d: float,
+        e: float,
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+        return (
+            (1 - b - d) + b * np.exp(-1 * x / c) + d * np.exp(-1 * np.square(x / e) / 2)
+        )
+
+    x_data = BasisUtil(values["basis"]).nx_points
+    y_data = get_measured_data(values["data"], "abs")
+    parameters, covariance = curve_fit(exponential_and_gaussian, x_data, y_data)
+    dt = values["basis"].times[1]
+
+    return (
+        ExponentialFitData(
+            parameters[0],
+            np.sqrt(covariance[0][0]),
+            parameters[1] * dt,
+            np.sqrt(covariance[1][1]) * dt,
+        ),
+        GaussianFitData(
+            parameters[2],
+            np.sqrt(covariance[2][2]),
+            parameters[3] * dt,
             np.sqrt(covariance[3][3]) * dt,
         ),
     )
