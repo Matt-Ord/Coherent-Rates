@@ -105,7 +105,7 @@ def _get_fundamental_potential_2d(
     # (x0,x1) -> (x0,-x1)
     # We therefore occupy G = +-K0, +-K1, +-(K0+K1) equally
     data = [[0, 1, 1], [1, 1, 0], [1, 0, 1]]
-    vector = 0.5 * system.barrier_energy * np.array(data) / np.sqrt(9)
+    vector = system.barrier_energy * np.array(data) / np.sqrt(9)
     return {
         "basis": TupleBasis(
             FundamentalTransformedPositionBasis[Literal[3], Literal[2]](
