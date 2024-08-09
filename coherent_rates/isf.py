@@ -75,7 +75,6 @@ _B2 = TypeVar("_B2", bound=BasisLike[Any, Any])
 
 _BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
-_BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 _ESB0 = TypeVar("_ESB0", bound=ExplicitStackedBasisWithLength[Any, Any])
 
 

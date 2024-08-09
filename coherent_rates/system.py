@@ -50,6 +50,7 @@ from surface_potential_analysis.stacked_basis.conversion import (
 )
 from surface_potential_analysis.state_vector.state_vector import calculate_normalization
 from surface_potential_analysis.wavepacket.get_eigenstate import (
+    BlochBasis,
     get_full_bloch_hamiltonian,
 )
 from surface_potential_analysis.wavepacket.wavepacket import (
@@ -58,9 +59,6 @@ from surface_potential_analysis.wavepacket.wavepacket import (
 )
 
 if TYPE_CHECKING:
-    from surface_potential_analysis.basis.explicit_basis import (
-        ExplicitStackedBasisWithLength,
-    )
     from surface_potential_analysis.operator.operator import (
         SingleBasisDiagonalOperator,
         SingleBasisOperator,
@@ -377,12 +375,9 @@ def get_hamiltonian(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> SingleBasisDiagonalOperator[
-    ExplicitStackedBasisWithLength[
-        TupleBasisLike[
-            TruncatedBasis[int, int],
-            TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
-        ],
-        Any,
+    BlochBasis[
+        TruncatedBasis[int, int],
+        TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
     ]
 ]:
     wavefunctions = get_bloch_wavefunctions(system, config)
@@ -398,7 +393,13 @@ def solve_schrodinger_equation(
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,
-) -> StateVectorList[_AX0Inv, ExplicitStackedBasisWithLength[Any, Any]]:
+) -> StateVectorList[
+    _AX0Inv,
+    BlochBasis[
+        TruncatedBasis[int, int],
+        TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
+    ],
+]:
     hamiltonian = get_hamiltonian(system, config)
     return solve_schrodinger_equation_diagonal(initial_state, times, hamiltonian)
 
