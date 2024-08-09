@@ -12,12 +12,7 @@ from coherent_rates.isf import (
     fit_abs_isf_to_gaussian_constant,
     get_boltzmann_isf,
 )
-from coherent_rates.plot import (
-    plot_boltzmann_isf,
-)
 from coherent_rates.system import (
-    SODIUM_COPPER_BRIDGE_SYSTEM_1D,
-    SODIUM_COPPER_SYSTEM_1D,
     SODIUM_COPPER_SYSTEM_2D,
     PeriodicSystemConfig,
 )
@@ -98,20 +93,3 @@ if __name__ == "__main__":
     print(gauss.width)
     print(gauss.width_error)
     input()
-
-    direction = (5, 0)
-    plot_boltzmann_isf(system, config, times, direction, n_repeats=10)
-
-    system = SODIUM_COPPER_BRIDGE_SYSTEM_1D
-    config = PeriodicSystemConfig((5,), (15,), 15, temperature=155)
-
-    times = EvenlySpacedTimeBasis(101, 1, -50, 1e-11)
-    direction = (5,)
-    isf = get_boltzmann_isf(system, config, times, direction, n_repeats=10)
-    x = BasisUtil(isf["basis"]).nx_points
-    print(x)
-
-    plot_boltzmann_isf(system, config, times, direction, n_repeats=10)
-
-    system = SODIUM_COPPER_SYSTEM_1D
-    plot_boltzmann_isf(system, config, times, direction, n_repeats=10)
