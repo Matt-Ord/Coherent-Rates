@@ -20,8 +20,8 @@ from coherent_rates.system import (
 if __name__ == "__main__":
     config = PeriodicSystemConfig((10, 1), (15, 15), 225, temperature=155)
     system = SODIUM_COPPER_SYSTEM_2D
-    times = EvenlySpacedTimeBasis(200, 1, 0, 50e-12)
-    n = 3
+    times = EvenlySpacedTimeBasis(200, 1, 0, 10e-12)
+    n = 1
     direction = (n, 0)
 
     potential = system.get_potential(config.shape, config.resolution)
@@ -37,14 +37,14 @@ if __name__ == "__main__":
 
     time = times.times
     y_fit = (1 - exp.amplitude) + exp.amplitude * np.exp(-1 * time / exp.time_constant)
-    fig, ax, line = plot_data_1d(y_fit, time, ax=ax)
+    fig, ax, line = plot_data_1d(y_fit, time, ax=ax, measure="real")
     line.set_label("fit")
     ax.legend()
+    ax.set_ylim(0, 1)
     fig.show()
     print(k_length)
     print(exp.time_constant)
     print(exp.time_constant_error)
-    input()
 
     gauss = fit_abs_isf_to_gaussian_constant(isf)
     print(gauss)
@@ -56,8 +56,9 @@ if __name__ == "__main__":
     y_fit = gauss.constant + gauss.amplitude * np.exp(
         -1 * np.square(time / gauss.width) / 2,
     )
-    fig, ax, line = plot_data_1d(y_fit, time, ax=ax)
+    fig, ax, line = plot_data_1d(y_fit, time, ax=ax, measure="real")
     line.set_label("fit")
+    ax.set_ylim(0, 1)
     ax.legend()
     fig.show()
     print(k_length)
@@ -80,12 +81,14 @@ if __name__ == "__main__":
     gauss_fit = (1 - exp.amplitude - gauss.amplitude) + gauss.amplitude * np.exp(
         -1 * np.square(time / gauss.width) / 2,
     )
-    fig, ax, line = plot_data_1d(gauss_fit, time, ax=ax)
+    fig, ax, line = plot_data_1d(gauss_fit, time, ax=ax, measure="real")
     line.set_label("gauss fit")
-    fig, ax, line = plot_data_1d(y_fit, time, ax=ax)
+    fig, ax, line = plot_data_1d(y_fit, time, ax=ax, measure="real")
+    ax.set_ylim(0, 1)
     line.set_label("fit")
     ax.legend()
     fig.show()
+
     print("amps:", exp.amplitude, gauss.amplitude)
     print(k_length)
     print(exp.time_constant)
