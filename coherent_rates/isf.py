@@ -510,12 +510,21 @@ def fit_abs_isf_to_exponential_and_gaussian(
         e: float,
     ) -> np.ndarray[Any, np.dtype[np.float64]]:
         return (
-            (1 - b - d) + b * np.exp(-1 * x / c) + d * np.exp(-1 * np.square(x / e) / 2)
+            (1 - b - d)
+            + b * np.exp(-1 * x / c)
+            + d * np.exp(-1 * np.square(x / e) / 2)
+            # Prevents negative constant offset
+            - 1000 * max(b + d - 1, 0)
         )
 
     x_data = BasisUtil(values["basis"]).nx_points
     y_data = get_measured_data(values["data"], "abs")
-    parameters, covariance = curve_fit(exponential_and_gaussian, x_data, y_data)
+    parameters, covariance = curve_fit(
+        exponential_and_gaussian,
+        x_data,
+        y_data,
+        bounds=([0, 0, 0, -np.inf], [1, np.inf, 1, np.inf]),
+    )
     dt = values["basis"].times[1]
 
     return (
