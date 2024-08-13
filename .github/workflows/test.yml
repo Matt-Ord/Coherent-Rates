@@ -12,11 +12,22 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          submodules: true
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.12"
+
+      - name: Set up Rust nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+
+      - name: Install Maturin
+        run: pip install maturin
 
       - name: Install Poetry
         run: |
