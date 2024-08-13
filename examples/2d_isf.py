@@ -16,7 +16,7 @@ if __name__ == "__main__":
     config = PeriodicSystemConfig((10, 10), (10, 20), temperature=155)
     system = SODIUM_COPPER_SYSTEM_2D
 
-    plot_system_eigenstates_2d(system, config, 0)
+    plot_system_eigenstates_2d(system, config, bands=[0])
 
     times = EvenlySpacedTimeBasis(101, 1, -50, 1e-11)
     state = get_random_boltzmann_state(system, config)
