@@ -7,7 +7,7 @@ from coherent_rates.system import (
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((20,), (50,), 50, temperature=155)
+    config = PeriodicSystemConfig((20,), (50,), temperature=155)
     system = SODIUM_COPPER_SYSTEM_1D
 
     times = EvenlySpacedTimeBasis(100, 1, 0, 4e-13)

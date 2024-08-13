@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
 import numpy as np
@@ -275,8 +275,27 @@ class PeriodicSystemConfig:
 
     shape: tuple[int, ...]
     resolution: tuple[int, ...]
-    n_bands: int
-    temperature: float
+    truncation: int | None = None
+    temperature: float = field(default=150, kw_only=True)
+
+    @property
+    def n_bands(self: Self) -> int:
+        """Total number of bands.
+
+        Parameters
+        ----------
+        self : Self
+
+        Returns
+        -------
+        int
+
+        """
+        return (
+            np.prod(self.resolution).item()
+            if self.truncation is None
+            else self.truncation
+        )
 
     def __hash__(self: Self) -> int:  # noqa: D105
         return hash((self.shape, self.resolution, self.n_bands, self.temperature))
@@ -374,12 +393,7 @@ def get_bloch_wavefunctions(
 def get_hamiltonian(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-) -> SingleBasisDiagonalOperator[
-    BlochBasis[
-        TruncatedBasis[int, int],
-        TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
-    ]
-]:
+) -> SingleBasisDiagonalOperator[BlochBasis[TruncatedBasis[int, int]]]:
     wavefunctions = get_bloch_wavefunctions(system, config)
 
     return get_full_bloch_hamiltonian(wavefunctions)
@@ -395,10 +409,7 @@ def solve_schrodinger_equation(
     times: _AX0Inv,
 ) -> StateVectorList[
     _AX0Inv,
-    BlochBasis[
-        TruncatedBasis[int, int],
-        TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
-    ],
+    BlochBasis[TruncatedBasis[int, int]],
 ]:
     hamiltonian = get_hamiltonian(system, config)
     return solve_schrodinger_equation_diagonal(initial_state, times, hamiltonian)

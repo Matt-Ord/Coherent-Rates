@@ -77,7 +77,7 @@ def as_operator_from_sparse_scattering_operator(
     operator: SparseScatteringOperator[_B0, _B0],
 ) -> SingleBasisOperator[_B0]:
     # Basis of the bloch wavefunction list
-    basis = operator["basis"][0].vectors["basis"][0]
+    basis = operator["basis"][0].wavefunctions["basis"][0]
     stacked = operator["data"].reshape(
         basis[0].n,
         basis[0].n,
@@ -104,7 +104,7 @@ def as_sparse_scattering_operator_from_operator(
     direction: tuple[int, ...],
 ) -> SparseScatteringOperator[_B0, _B0]:
     # Basis of the bloch wavefunction list
-    basis = operator["basis"][0].vectors["basis"][0]
+    basis = operator["basis"][0].wavefunctions["basis"][0]
     stacked = operator["data"].reshape(
         basis[0].n,
         *basis[1].shape,
@@ -131,18 +131,18 @@ def apply_scattering_operator_to_state(
         "ijk,jk->ik",
         # band (out), band (in), bloch k
         operator["data"].reshape(
-            operator["basis"][0].vectors["basis"][0][0].n,
-            operator["basis"][1].vectors["basis"][0][0].n,
-            operator["basis"][1].vectors["basis"][0][1].n,
+            operator["basis"][0].wavefunctions["basis"][0][0].n,
+            operator["basis"][1].wavefunctions["basis"][0][0].n,
+            operator["basis"][1].wavefunctions["basis"][0][1].n,
         ),
         # band (in), bloch k
         converted["data"].reshape(
-            operator["basis"][1].vectors["basis"][0].shape,
+            operator["basis"][1].wavefunctions["basis"][0].shape,
         ),
     )
     stacked = data.reshape(
-        operator["basis"][0].vectors["basis"][0][0].n,
-        *operator["basis"][0].vectors["basis"][0][1].shape,
+        operator["basis"][0].wavefunctions["basis"][0][0].n,
+        *operator["basis"][0].wavefunctions["basis"][0][1].shape,
     )
     rolled = np.roll(
         stacked,
@@ -162,21 +162,21 @@ def apply_scattering_operator_to_states(
         "ijk,ljk->lik",
         # band (out), band (in), bloch k
         operator["data"].reshape(
-            operator["basis"][0].vectors["basis"][0][0].n,
-            operator["basis"][1].vectors["basis"][0][0].n,
-            operator["basis"][1].vectors["basis"][0][1].n,
+            operator["basis"][0].wavefunctions["basis"][0][0].n,
+            operator["basis"][1].wavefunctions["basis"][0][0].n,
+            operator["basis"][1].wavefunctions["basis"][0][1].n,
         ),
         # list, band, bloch k
         converted["data"].reshape(
             converted["basis"].shape[0],
-            *operator["basis"][1].vectors["basis"][0].shape,
+            *operator["basis"][1].wavefunctions["basis"][0].shape,
         ),
     )
 
     stacked = data.reshape(
         converted["basis"].shape[0],
-        operator["basis"][0].vectors["basis"][0][0].n,
-        *operator["basis"][0].vectors["basis"][0][1].shape,
+        operator["basis"][0].wavefunctions["basis"][0][0].n,
+        *operator["basis"][0].wavefunctions["basis"][0][1].shape,
     )
     rolled = np.roll(
         stacked,

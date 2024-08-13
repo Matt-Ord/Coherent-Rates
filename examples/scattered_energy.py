@@ -12,7 +12,7 @@ from coherent_rates.system import (
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((20,), (50,), 50, temperature=155)
+    config = PeriodicSystemConfig((20,), (50,), temperature=155)
     system = HYDROGEN_NICKEL_SYSTEM_1D
 
     # Shows that scattered energy is lower for a larger initial mass

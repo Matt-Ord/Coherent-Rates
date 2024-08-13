@@ -13,7 +13,7 @@ from coherent_rates.system import (
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((5, 5), (10, 10), 100, temperature=155)
+    config = PeriodicSystemConfig((10, 10), (10, 20), temperature=155)
     system = SODIUM_COPPER_SYSTEM_2D
 
     plot_system_eigenstates_2d(system, config, 0)
@@ -22,7 +22,8 @@ if __name__ == "__main__":
     state = get_random_boltzmann_state(system, config)
     plot_system_evolution_2d(system, config, state, times)
 
-    direction = (5, 0)
+    direction = (1, 0)
+    times = EvenlySpacedTimeBasis(101, 1, -50, 0.2e-11)
     isf = plot_boltzmann_isf(system, config, times, direction, n_repeats=10)
 
     nk_points = [(0, 3 * i) for i in range(1, 5)]
