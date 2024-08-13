@@ -6,9 +6,6 @@ import numpy as np
 from surface_potential_analysis.basis.stacked_basis import TupleBasis
 from surface_potential_analysis.basis.util import BasisUtil
 from surface_potential_analysis.operator.conversion import convert_operator_to_basis
-from surface_potential_analysis.stacked_basis.conversion import (
-    stacked_basis_as_fundamental_momentum_basis,
-)
 from surface_potential_analysis.state_vector.conversion import (
     convert_state_vector_list_to_basis,
     convert_state_vector_to_basis,
@@ -76,7 +73,7 @@ class SparseScatteringOperator(TypedDict, Generic[_B0_co, _B1_co]):
     """The direction of scattering"""
 
 
-def as_operator(
+def as_operator_from_sparse_scattering_operator(
     operator: SparseScatteringOperator[_B0, _B0],
 ) -> SingleBasisOperator[_B0]:
     # Basis of the bloch wavefunction list
@@ -102,7 +99,7 @@ def as_operator(
     return {"basis": operator["basis"], "data": data}
 
 
-def as_scattering_operator(
+def as_sparse_scattering_operator_from_operator(
     operator: SingleBasisOperator[_B0],
     direction: tuple[int, ...],
 ) -> SparseScatteringOperator[_B0, _B0]:
@@ -203,88 +200,51 @@ def get_periodic_x_operator_sparse(
     bloch_phase_basis = basis.wavefunctions["basis"][0][1]
     bloch_wavefunction_basis = basis.wavefunctions["basis"][1]
     shape = bloch_phase_basis.shape
-    # Direction of scattering in
-    bloch_phase_direction = tuple(
-        d % s for (d, s) in zip(direction, shape, strict=True)
-    )
-    # Direction in the wavefunction space
-    bloch_wavefunction_direction = tuple(
-        (d // s) for (d, s) in zip(direction, shape, strict=True)
-    )
 
-    # Get the periodic x in the basis of bloch wavefunction u(x)
-    periodic_x = convert_operator_to_basis(
-        get_periodic_x_operator(
-            bloch_wavefunction_basis,
-            bloch_wavefunction_direction,
-        ),
-        TupleBasis(bloch_wavefunction_basis, bloch_wavefunction_basis),
-    )
     # band (out), band (in), bloch k
     out = np.zeros(
         (band_basis.n, band_basis.n, bloch_phase_basis.n),
         dtype=np.complex128,
     )
-    for i, idx_in in enumerate(zip(*BasisUtil(bloch_phase_basis).stacked_nk_points)):
-        # Convert periodic x to band basis
-        idx_out = tuple(i + s for (i, s) in zip(idx_in, bloch_phase_direction))
-        basis_out = basis.basis_at_bloch_k(idx_out)
-        basis_in = basis.basis_at_bloch_k(idx_in)
-        converted = convert_operator_to_basis(
-            periodic_x,
+    stacked_nk_points = BasisUtil(bloch_phase_basis).stacked_nk_points
+    for i, nk_in in enumerate(zip(*stacked_nk_points)):
+        # Find the bloch k of the scattered state
+        util = BasisUtil(basis.wavefunctions["basis"][0][1])
+        idx_out = util.get_flat_index(
+            tuple(j + s for (j, s) in zip(nk_in, direction)),
+            mode="wrap",
+        )
+        nk_out = tuple(
+            k[i] for k, i in zip(stacked_nk_points, util.get_stacked_index(idx_out))
+        )
+
+        # Direction in the wavefunction space
+        # Not this is not the same for all idx_in, idx_out
+        bloch_wavefunction_direction = tuple(
+            (d - (out - in_)) // s
+            for (d, in_, out, s) in zip(
+                direction,
+                nk_in,
+                nk_out,
+                shape,
+                strict=True,
+            )
+        )
+
+        # Get the periodic x in the basis of bloch wavefunction u(x)
+        basis_in = basis.basis_at_bloch_k(nk_in)
+        basis_out = basis.basis_at_bloch_k(nk_out)
+        periodic_x = convert_operator_to_basis(
+            get_periodic_x_operator(
+                bloch_wavefunction_basis,
+                bloch_wavefunction_direction,
+            ),
             TupleBasis(basis_out, basis_in),
         )
-        out[:, :, i] = converted["data"].reshape(band_basis.n, band_basis.n)
+
+        out[:, :, i] = periodic_x["data"].reshape(band_basis.n, band_basis.n)
     return {
         "basis": TupleBasis(basis, basis),
         "data": out.ravel(),
         "direction": direction,
     }
-
-
-@timed
-def get_periodic_x_operator_as_sparse(
-    basis: _B0_co,
-    direction: tuple[int, ...] | None,
-) -> SparseScatteringOperator[_B0_co, _B0_co]:
-    direction = tuple(1 for _ in range(basis.ndim)) if direction is None else direction
-    converted = convert_operator_to_basis(
-        get_periodic_x_operator(basis, direction),
-        TupleBasis(basis, basis),
-    )
-    # Basis of the bloch wavefunction list
-    return as_scattering_operator(converted, direction)
-
-
-@timed
-def test_get_periodic_x_operator_sparse(
-    basis: _B0_co,
-    direction: tuple[int, ...] | None,
-) -> None:
-    direction = tuple(1 for _ in range(basis.ndim)) if direction is None else direction
-    basis_k = stacked_basis_as_fundamental_momentum_basis(basis)
-    converted = convert_operator_to_basis(
-        get_periodic_x_operator(basis, direction),
-        TupleBasis(basis, basis),
-    )
-    # Basis of the bloch wavefunction list
-    converted_sparse = get_periodic_x_operator_as_sparse(basis, direction)
-    sparse = get_periodic_x_operator_sparse(basis, direction)
-    np.testing.assert_equal(
-        np.count_nonzero(np.logical_not(np.isclose(converted_sparse["data"], 0))),
-        np.count_nonzero(np.logical_not(np.isclose(converted["data"], 0))),
-    )
-
-    operator_k = convert_operator_to_basis(converted, TupleBasis(basis_k, basis_k))
-    np.testing.assert_equal(
-        operator_k["data"].reshape(operator_k["basis"].shape),
-        as_operator(sparse)["data"],
-    )
-    band_basis = basis.wavefunctions["basis"][0][0]
-    bloch_phase_basis = basis.wavefunctions["basis"][0][1]
-    shape = (band_basis.n, band_basis.n, bloch_phase_basis.n)
-    for phase in range(bloch_phase_basis.n):
-        np.testing.assert_array_almost_equal(
-            converted_sparse["data"].reshape(shape)[:, :, phase],
-            sparse["data"].reshape(shape)[:, :, phase],
-        )
