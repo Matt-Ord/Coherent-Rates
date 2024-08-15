@@ -9,6 +9,7 @@ from scipy.constants import Boltzmann
 from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
+    FundamentalTransformedBasis,
 )
 from surface_potential_analysis.basis.basis_like import BasisLike
 from surface_potential_analysis.basis.stacked_basis import (
@@ -26,10 +27,9 @@ from surface_potential_analysis.dynamics.schrodinger.solve import (
 from surface_potential_analysis.operator.operator import (
     SingleBasisDiagonalOperator,
     apply_operator_to_state,
-    as_operator,
 )
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
-    calculate_expectation,
+    calculate_expectation_diagonal,
 )
 from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
 from surface_potential_analysis.state_vector.state_vector_list import (
@@ -72,11 +72,11 @@ _BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
 
 _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
 _B1 = TypeVar("_B1", bound=BasisLike[Any, Any])
-_B2 = TypeVar("_B2", bound=BasisLike[Any, Any])
 
 _BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
 _ESB0 = TypeVar("_ESB0", bound=BlochBasis[Any])
+_ESB1 = TypeVar("_ESB1", bound=BlochBasis[Any])
 
 
 def _get_isf_pair_states_from_hamiltonian(
@@ -114,8 +114,8 @@ def get_isf_pair_states(
     times: _BT0,
     direction: tuple[int, ...] | None = None,
 ) -> tuple[
-    StateVectorList[_BT0, BasisLike[Any, Any]],
-    StateVectorList[_BT0, BasisLike[Any, Any]],
+    StateVectorList[_BT0, StackedBasisWithVolumeLike[Any, Any, Any]],
+    StateVectorList[_BT0, StackedBasisWithVolumeLike[Any, Any, Any]],
 ]:
     hamiltonian = get_hamiltonian(system, config)
     operator = get_periodic_x_operator_sparse(
@@ -156,10 +156,13 @@ def _get_isf_from_hamiltonian(
 def _get_states_per_band(
     states: StateVectorList[
         _B1,
-        ExplicitStackedBasisWithLength[TupleBasisLike[_B0, _B2], Any],
+        BlochBasis[_B0],
     ],
-) -> StateVectorList[TupleBasis[_B0, _B1], _B2]:
-    basis = states["basis"][1].vectors["basis"][0]
+) -> StateVectorList[
+    TupleBasis[_B0, _B1],
+    TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
+]:
+    basis = states["basis"][1].wavefunctions["basis"][0]
 
     data = states["data"].reshape(-1, *basis.shape).swapaxes(0, 1)
     return {
@@ -169,13 +172,11 @@ def _get_states_per_band(
 
 
 def _get_band_resolved_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[
-        ExplicitStackedBasisWithLength[TupleBasisLike[_B0, Any], Any]
-    ],
+    hamiltonian: SingleBasisDiagonalOperator[_ESB1],
     operator: SparseScatteringOperator[_ESB0, _ESB0],
     initial_state: StateVector[_B1],
     times: _BT0,
-) -> ValueList[TupleBasis[_B0, _BT0]]:
+) -> ValueList[TupleBasis[Any, _BT0]]:
     (
         state_evolved_scattered,
         state_scattered_evolved,
@@ -321,7 +322,7 @@ def get_band_resolved_boltzmann_isf(
     n_repeats: int = 1,
 ) -> StatisticalValueList[TupleBasisLike[BasisLike[Any, Any], _BT0]]:
     hamiltonian = get_hamiltonian(system, config)  #
-    bands = hamiltonian["basis"][0].vectors["basis"][0][0]
+    bands = hamiltonian["basis"][0].wavefunctions["basis"][0][0]
     operator = get_periodic_x_operator_sparse(hamiltonian["basis"][0], direction)
 
     isf_data = np.zeros((n_repeats, bands.n * times.n), dtype=np.complex128)
@@ -533,13 +534,12 @@ def _get_scattered_energy_change(
     state: StateVector[Any],
     direction: tuple[int, ...] | None = None,
 ) -> float:
-    hamiltonian_operator = as_operator(hamiltonian)
     operator = get_periodic_x_operator(hamiltonian["basis"][0], direction)
 
-    energy = np.real(calculate_expectation(hamiltonian_operator, state))
+    energy = np.real(calculate_expectation_diagonal(hamiltonian, state))
     scattered_state = apply_operator_to_state(operator, state)
-    scattered_energy = calculate_expectation(
-        hamiltonian_operator,
+    scattered_energy = calculate_expectation_diagonal(
+        hamiltonian,
         scattered_state,
     )
 
@@ -567,24 +567,29 @@ def get_thermal_scattered_energy_change_against_k(
     *,
     nk_points: list[tuple[int, ...]] | None = None,
     n_repeats: int = 10,
-) -> ValueList[MomentumBasis]:
+) -> StatisticalValueList[MomentumBasis]:
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
     hamiltonian = get_hamiltonian(system, config)
     energy_change = np.zeros(len(nk_points), dtype=np.complex128)
+    standard_deviation = np.zeros(len(nk_points), dtype=np.float64)
     for i, k_point in enumerate(nk_points):
-        energy_change[i] = np.average(
-            _get_thermal_scattered_energy_change(
-                hamiltonian,
-                config.temperature,
-                k_point,
-                n_repeats=n_repeats,
-            )["data"],
-        )
+        data = _get_thermal_scattered_energy_change(
+            hamiltonian,
+            config.temperature,
+            k_point,
+            n_repeats=n_repeats,
+        )["data"]
+        energy_change[i] = np.average(data)
+        standard_deviation[i] = np.std(data)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
     basis = MomentumBasis(k_points)
-    return {"data": energy_change, "basis": basis}
+    return {
+        "data": energy_change,
+        "basis": basis,
+        "standard_deviation": standard_deviation,
+    }
 
 
 def get_scattered_energy_change_against_k(

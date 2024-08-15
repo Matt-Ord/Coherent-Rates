@@ -29,6 +29,7 @@ from surface_potential_analysis.state_vector.plot import (
     plot_total_band_occupation_against_energy,
 )
 from surface_potential_analysis.state_vector.plot_value_list import (
+    plot_all_value_list_against_time,
     plot_split_value_list_against_frequency,
     plot_split_value_list_against_time,
     plot_value_list_against_frequency,
@@ -78,6 +79,9 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
     from surface_potential_analysis.basis.basis_like import BasisLike
+    from surface_potential_analysis.basis.explicit_basis import (
+        ExplicitStackedBasisWithLength,
+    )
     from surface_potential_analysis.basis.stacked_basis import (
         StackedBasisLike,
         StackedBasisWithVolumeLike,
@@ -275,7 +279,7 @@ def plot_system_evolution_1d(
 
 
 def plot_system_evolution_2d(
-    system: PeriodicSystem2d,
+    system: PeriodicSystem,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
@@ -289,14 +293,21 @@ def plot_system_evolution_2d(
 
 
 def plot_pair_system_evolution_1d(
-    system: PeriodicSystem1d,
+    system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    initial_state: StateVector[_SBV0],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
+    initial_state: StateVector[_SBV0]
+    | StateVector[ExplicitStackedBasisWithLength[Any, Any]]
+    | None = None,
     direction: tuple[int] = (1,),
     *,
     measure: Measure = "abs",
 ) -> None:
+    initial_state = (
+        get_random_boltzmann_state(system, config)
+        if initial_state is None
+        else initial_state
+    )
     potential = system.get_potential(config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
@@ -411,6 +422,7 @@ def plot_band_resolved_boltzmann_isf(
         n_repeats=n_repeats,
     )
     fig, _ = plot_split_value_list_against_time(resolved_data, measure="real")
+    fig, _ = plot_all_value_list_against_time(resolved_data, measure="real")
 
     fig.show()
     fig, ax = plot_split_value_list_against_frequency(resolved_data)
@@ -517,11 +529,13 @@ def plot_thermal_scattered_energy_change_comparison(
     config: PeriodicSystemConfig,
     *,
     nk_points: list[tuple[int, ...]] | None = None,
+    n_repeats: int = 10,
 ) -> None:
     bound_data = get_thermal_scattered_energy_change_against_k(
         system,
         config,
         nk_points=nk_points,
+        n_repeats=n_repeats,
     )
     fig, ax, line = plot_value_list_against_momentum(bound_data)
     line.set_label("Bound")
