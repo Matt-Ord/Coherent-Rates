@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
 import numpy as np
@@ -50,6 +50,7 @@ from surface_potential_analysis.stacked_basis.conversion import (
 )
 from surface_potential_analysis.state_vector.state_vector import calculate_normalization
 from surface_potential_analysis.wavepacket.get_eigenstate import (
+    BlochBasis,
     get_full_bloch_hamiltonian,
 )
 from surface_potential_analysis.wavepacket.wavepacket import (
@@ -58,9 +59,6 @@ from surface_potential_analysis.wavepacket.wavepacket import (
 )
 
 if TYPE_CHECKING:
-    from surface_potential_analysis.basis.explicit_basis import (
-        ExplicitStackedBasisWithLength,
-    )
     from surface_potential_analysis.operator.operator import (
         SingleBasisDiagonalOperator,
         SingleBasisOperator,
@@ -277,8 +275,27 @@ class PeriodicSystemConfig:
 
     shape: tuple[int, ...]
     resolution: tuple[int, ...]
-    n_bands: int
-    temperature: float
+    truncation: int | None = None
+    temperature: float = field(default=150, kw_only=True)
+
+    @property
+    def n_bands(self: Self) -> int:
+        """Total number of bands.
+
+        Parameters
+        ----------
+        self : Self
+
+        Returns
+        -------
+        int
+
+        """
+        return (
+            np.prod(self.resolution).item()
+            if self.truncation is None
+            else self.truncation
+        )
 
     def __hash__(self: Self) -> int:  # noqa: D105
         return hash((self.shape, self.resolution, self.n_bands, self.temperature))
@@ -376,15 +393,7 @@ def get_bloch_wavefunctions(
 def get_hamiltonian(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-) -> SingleBasisDiagonalOperator[
-    ExplicitStackedBasisWithLength[
-        TupleBasisLike[
-            TruncatedBasis[int, int],
-            TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
-        ],
-        Any,
-    ]
-]:
+) -> SingleBasisDiagonalOperator[BlochBasis[TruncatedBasis[int, int]]]:
     wavefunctions = get_bloch_wavefunctions(system, config)
 
     return get_full_bloch_hamiltonian(wavefunctions)
@@ -398,7 +407,10 @@ def solve_schrodinger_equation(
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,
-) -> StateVectorList[_AX0Inv, ExplicitStackedBasisWithLength[Any, Any]]:
+) -> StateVectorList[
+    _AX0Inv,
+    BlochBasis[TruncatedBasis[int, int]],
+]:
     hamiltonian = get_hamiltonian(system, config)
     return solve_schrodinger_equation_diagonal(initial_state, times, hamiltonian)
 

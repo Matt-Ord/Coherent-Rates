@@ -11,9 +11,6 @@ from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
 )
 from surface_potential_analysis.basis.basis_like import BasisLike
-from surface_potential_analysis.basis.explicit_basis import (
-    ExplicitStackedBasisWithLength,
-)
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
     TupleBasis,
@@ -40,6 +37,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 )
 from surface_potential_analysis.util.decorators import npy_cached_dict, timed
 from surface_potential_analysis.util.util import get_measured_data
+from surface_potential_analysis.wavepacket.get_eigenstate import BlochBasis
 
 from coherent_rates.scattering_operator import (
     SparseScatteringOperator,
@@ -50,6 +48,9 @@ from coherent_rates.scattering_operator import (
 from coherent_rates.system import get_hamiltonian
 
 if TYPE_CHECKING:
+    from surface_potential_analysis.basis.explicit_basis import (
+        ExplicitStackedBasisWithLength,
+    )
     from surface_potential_analysis.basis.stacked_basis import (
         TupleBasisLike,
     )
@@ -75,8 +76,7 @@ _B2 = TypeVar("_B2", bound=BasisLike[Any, Any])
 
 _BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
-_BV0 = TypeVar("_BV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
-_ESB0 = TypeVar("_ESB0", bound=ExplicitStackedBasisWithLength[Any, Any])
+_ESB0 = TypeVar("_ESB0", bound=BlochBasis[Any])
 
 
 def _get_isf_pair_states_from_hamiltonian(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Iterable, TypeVar
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -84,7 +84,7 @@ if TYPE_CHECKING:
     )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
-    from surface_potential_analysis.types import SingleFlatIndexLike
+    from surface_potential_analysis.types import SingleIndexLike
     from surface_potential_analysis.util.util import Measure
     from surface_potential_analysis.wavepacket.wavepacket import (
         BlochWavefunctionListWithEigenvaluesList,
@@ -230,7 +230,9 @@ def plot_system_bands(
 def plot_system_eigenstates_2d(
     system: PeriodicSystem2d,
     config: PeriodicSystemConfig,
-    index: SingleFlatIndexLike | None = None,
+    *,
+    bands: Iterable[int] | None = None,
+    bloch_k: SingleIndexLike | None = None,
 ) -> None:
     """Plot the potential against position."""
     potential = system.get_potential(config.shape, config.resolution)
@@ -238,17 +240,14 @@ def plot_system_eigenstates_2d(
     fig.show()
 
     hamiltonian = get_hamiltonian(system, config)
-    eigenvectors = hamiltonian["basis"][0].vectors
 
-    if index is None:
-        for i in range(config.n_bands):
-            state = get_state_vector(eigenvectors, i)
-            fig, _ax, _line = plot_state_2d_x(state)
-            fig.show()
-            fig, _ax, _line = plot_state_2d_k(state)
-            fig.show()
-    else:
-        state = get_state_vector(eigenvectors, index)
+    bloch_k = 0 if bloch_k is None else bloch_k
+    bands = range(config.n_bands) if bands is None else bands
+
+    eigenvectors = hamiltonian["basis"][0].vectors_at_bloch_k(bloch_k)
+
+    for i in bands:
+        state = get_state_vector(eigenvectors, i)
         fig, _ax, _line = plot_state_2d_x(state)
         fig.show()
         fig, _ax, _line = plot_state_2d_k(state)
