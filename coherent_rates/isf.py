@@ -389,12 +389,15 @@ def _get_ak_data_path(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
-    fit_method: FitMethod[Any] | None = None,  # noqa: ARG001
+    fit_method: FitMethod[Any] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
 ) -> Path:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
-    return Path(f"data/{hash((system, config))}.{hash(nk_points[0])}.npz")
+    return Path(
+        f"data/{hash((system, config))}.{hash(nk_points[0])}.{hash(fit_method)}.npz",
+    )
 
 
 def get_value_list_index(

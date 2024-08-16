@@ -1,18 +1,18 @@
 from __future__ import annotations
 
+import functools
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, Self, TypeVar
 
 import numpy as np
 from scipy.constants import Boltzmann
 from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.time_basis_like import (
+    BasisWithTimeLike,
     EvenlySpacedTimeBasis,
 )
 from surface_potential_analysis.basis.util import BasisUtil
-from surface_potential_analysis.state_vector.plot_value_list import (
-    plot_value_list_against_time,
-)
 from surface_potential_analysis.util.util import get_measured_data
 
 if TYPE_CHECKING:
@@ -21,19 +21,26 @@ if TYPE_CHECKING:
     from coherent_rates.system import PeriodicSystem, PeriodicSystemConfig
 
 
-_BT0 = TypeVar("_BT0", bound=EvenlySpacedTimeBasis[Any, Any, Any])
+_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
 T = TypeVar("T")
 
 
-class FitMethod(Generic[T]):
-    def fit_isf_data(
+class FitMethod(ABC, Generic[T]):
+    @abstractmethod
+    def __hash__(self: Self) -> int:
+        ...
+
+    @abstractmethod
+    def get_fit_from_isf(
         self: Self,
         data: ValueList[_BT0],
     ) -> T:
         ...
 
+    @classmethod
+    @abstractmethod
     def get_rates_from_fit(
-        self: Self,
+        cls: type[Self],
         fit: T,
     ) -> tuple[float, ...]:
         ...
@@ -42,39 +49,35 @@ class FitMethod(Generic[T]):
         self: Self,
         data: ValueList[_BT0],
     ) -> tuple[float, ...]:
-        fit = self.fit_isf_data(data)
+        fit = self.get_fit_from_isf(data)
         return self.get_rates_from_fit(fit)
 
-    def get_fit_curve(
-        self: Self,
-        data: ValueList[_BT0],
+    @classmethod
+    def get_function_for_fit(
+        cls: type[Self],
+        fit: T,
+    ) -> Callable[[_BT0], ValueList[_BT0]]:
+        return functools.partial(cls.get_fitted_data, fit)
+
+    @classmethod
+    @abstractmethod
+    def get_fitted_data(
+        cls: type[Self],
+        fit: T,
+        basis: _BT0,
     ) -> ValueList[_BT0]:
         ...
 
-    def get_curve_label(
-        self: Self,
-    ) -> tuple[str, ...]:
+    @staticmethod
+    @abstractmethod
+    def get_curve_label() -> tuple[str, ...]:
         ...
 
-    def plot_isf_with_fit(
-        self: Self,
-        data: ValueList[_BT0],
-    ) -> None:
-        y_fit = self.get_fit_curve(data)
+    @classmethod
+    def n_rates(cls: type[Self]) -> int:
+        return len(cls.get_curve_label())
 
-        fig, ax, line = plot_value_list_against_time(data)
-        line.set_label("ISF")
-
-        fig, ax, line = plot_value_list_against_time(y_fit, ax=ax)
-        line.set_label("Fit")
-
-        ax.legend()
-        fig.show()
-        input()
-
-    def n_rates(self: Self) -> int:
-        ...
-
+    @abstractmethod
     def get_fit_time(
         self: Self,
         system: PeriodicSystem,
@@ -115,7 +118,10 @@ class GaussianParameters:
 
 
 class GaussianMethod(FitMethod[GaussianParameters]):
-    def fit_isf_data(
+    def __hash__(self: Self) -> int:
+        return hash("GaussianMethod")
+
+    def get_fit_from_isf(
         self: Self,
         data: ValueList[_BT0],
     ) -> GaussianParameters:
@@ -154,22 +160,24 @@ class GaussianMethod(FitMethod[GaussianParameters]):
         dt = isf["basis"].times[1]
         return GaussianParameters(fit_A, np.abs(fit_B) * dt)
 
+    @classmethod
     def get_rates_from_fit(
-        self: Self,
+        cls: type[Self],
         fit: GaussianParameters,
     ) -> tuple[float,]:
         return (1 / fit.width,)
 
-    def get_fit_curve(
-        self: Self,
-        data: ValueList[_BT0],
+    @classmethod
+    def get_fitted_data(
+        cls: type[Self],
+        fit: GaussianParameters,
+        basis: _BT0,
     ) -> ValueList[_BT0]:
-        times = data["basis"].times
-        gaussian = self.fit_isf_data(data)
+        gaussian = fit
         y_fit = (1 - gaussian.amplitude) + gaussian.amplitude * np.exp(
-            -1 * np.square(times / gaussian.width) / 2,
+            -1 * np.square(basis.times / gaussian.width) / 2,
         )
-        return {"basis": data["basis"], "data": y_fit}
+        return {"basis": basis, "data": y_fit.astype(np.complex128)}
 
     def get_curve_label(
         self: Self,
@@ -189,7 +197,26 @@ class GaussianMethod(FitMethod[GaussianParameters]):
 
 
 class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameters]]):
-    def fit_isf_data(
+    def __hash__(self: Self) -> int:
+        return hash("DoubleGaussianMethod")
+
+    @classmethod
+    def get_fitted_data(
+        cls: type[Self],
+        fit: tuple[GaussianParameters, GaussianParameters],
+        basis: _BT0,
+    ) -> ValueList[_BT0]:
+        gaussian1, gaussian2 = fit
+        y_fit = (
+            (1 - gaussian1.amplitude - gaussian2.amplitude)
+            + gaussian1.amplitude
+            * np.exp(-1 * np.square(basis.times / gaussian1.width) / 2)
+            + gaussian2.amplitude
+            * np.exp(-1 * np.square(basis.times / gaussian2.width) / 2)
+        )
+        return {"basis": basis, "data": y_fit.astype(np.complex128)}
+
+    def get_fit_from_isf(
         self: Self,
         data: ValueList[_BT0],
     ) -> tuple[GaussianParameters, GaussianParameters]:
@@ -226,8 +253,9 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
             GaussianParameters(fit_C, np.abs(fit_D) * dt),
         )
 
+    @classmethod
     def get_rates_from_fit(
-        self: Self,
+        cls: type[Self],
         fit: tuple[GaussianParameters, GaussianParameters],
     ) -> tuple[float, float]:
         return (
@@ -235,19 +263,12 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
             min(1 / fit[0].width, 1 / fit[1].width),
         )
 
-    def get_rates_from_isf(
-        self: Self,
-        data: ValueList[_BT0],
-    ) -> tuple[float, float]:
-        fit = self.fit_isf_data(data)
-        return self.get_rates_from_fit(fit)
-
     def get_fit_curve(
         self: Self,
         data: ValueList[_BT0],
     ) -> ValueList[_BT0]:
         times = data["basis"].times
-        gaussian1, gaussian2 = self.fit_isf_data(data)
+        gaussian1, gaussian2 = self.get_fit_from_isf(data)
         y_fit = (
             (1 - gaussian1.amplitude - gaussian2.amplitude)
             + gaussian1.amplitude * np.exp(-1 * np.square(times / gaussian1.width) / 2)
@@ -279,7 +300,23 @@ class ExponentialParameters:
 
 
 class ExponentialMethod(FitMethod[ExponentialParameters]):
-    def fit_isf_data(
+    def __hash__(self: Self) -> int:
+        return hash("ExponentialMethod")
+
+    @classmethod
+    def get_fitted_data(
+        cls: type[Self],
+        fit: ExponentialParameters,
+        basis: _BT0,
+    ) -> ValueList[_BT0]:
+        times = basis.times
+        exponential = fit
+        y_fit = (1 - exponential.amplitude) + exponential.amplitude * np.exp(
+            -1 * times / exponential.time_constant,
+        )
+        return {"basis": basis, "data": y_fit.astype(np.complex128)}
+
+    def get_fit_from_isf(
         self: Self,
         data: ValueList[_BT0],
     ) -> ExponentialParameters:
@@ -304,8 +341,9 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
         dt = data["basis"].times[1]
         return ExponentialParameters(fit_A, fit_B * dt)
 
+    @classmethod
     def get_rates_from_fit(
-        self: Self,
+        cls: type[Self],
         fit: ExponentialParameters,
     ) -> tuple[float,]:
         return (1 / fit.time_constant,)
@@ -314,11 +352,8 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
         self: Self,
         data: ValueList[_BT0],
     ) -> ValueList[_BT0]:
-        times = data["basis"].times
-        exponential = self.fit_isf_data(data)
-        y_fit = (1 - exponential.amplitude) + exponential.amplitude * np.exp(
-            -1 * times / exponential.time_constant,
-        )
+        data["basis"].times
+
         return {"basis": data["basis"], "data": y_fit}
 
     def get_curve_label(
@@ -341,7 +376,25 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
 class GaussianPlusExponentialMethod(
     FitMethod[tuple[GaussianParameters, ExponentialParameters]],
 ):
-    def fit_isf_data(
+    def __hash__(self: Self) -> int:
+        return hash("GaussianPlusExponentialMethod")
+
+    @classmethod
+    def get_fitted_data(
+        cls: type[Self],
+        fit: tuple[GaussianParameters, ExponentialParameters],
+        basis: _BT0,
+    ) -> ValueList[_BT0]:
+        times = basis.times
+        gaussian, exponential = fit
+        y_fit = (
+            (1 - gaussian.amplitude - exponential.amplitude)
+            + gaussian.amplitude * np.exp(-1 * np.square(times / gaussian.width) / 2)
+            + exponential.amplitude * np.exp(-1 * times / exponential.time_constant)
+        )
+        return {"basis": basis, "data": y_fit.astype(np.complex128)}
+
+    def get_fit_from_isf(
         self: Self,
         data: ValueList[_BT0],
     ) -> tuple[GaussianParameters, ExponentialParameters]:
@@ -378,8 +431,9 @@ class GaussianPlusExponentialMethod(
             ExponentialParameters(fit_C, fit_D * dt),
         )
 
+    @classmethod
     def get_rates_from_fit(
-        self: Self,
+        cls: type[Self],
         fit: tuple[GaussianParameters, ExponentialParameters],
     ) -> tuple[float, float]:
         return (1 / fit[0].width, 1 / fit[1].time_constant)
@@ -389,7 +443,7 @@ class GaussianPlusExponentialMethod(
         data: ValueList[_BT0],
     ) -> ValueList[_BT0]:
         times = data["basis"].times
-        gaussian, exponential = self.fit_isf_data(data)
+        gaussian, exponential = self.get_fit_from_isf(data)
         y_fit = (
             (1 - gaussian.amplitude - exponential.amplitude)
             + gaussian.amplitude * np.exp(-1 * np.square(times / gaussian.width) / 2)
