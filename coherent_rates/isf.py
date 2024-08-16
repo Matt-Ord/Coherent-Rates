@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
 from scipy.constants import Boltzmann
-from scipy.optimize import curve_fit
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
 )
@@ -31,14 +30,17 @@ from surface_potential_analysis.operator.operator import (
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation,
 )
+from surface_potential_analysis.state_vector.eigenstate_list import (
+    ValueList,
+)
 from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
 from surface_potential_analysis.util.decorators import npy_cached_dict, timed
-from surface_potential_analysis.util.util import get_measured_data
 from surface_potential_analysis.wavepacket.get_eigenstate import BlochBasis
 
+from coherent_rates.fit import FitMethod, GaussianMethod, GaussianPlusExponentialMethod
 from coherent_rates.scattering_operator import (
     SparseScatteringOperator,
     apply_scattering_operator_to_state,
@@ -59,7 +61,6 @@ if TYPE_CHECKING:
     )
     from surface_potential_analysis.state_vector.eigenstate_list import (
         StatisticalValueList,
-        ValueList,
     )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import (
@@ -348,89 +349,6 @@ def get_band_resolved_boltzmann_isf(
     }
 
 
-@dataclass
-class GaussianFitData:
-    """Represents the parameters from a Gaussian fit."""
-
-    amplitude: float
-    amplitude_error: float
-    width: float
-    width_error: float
-
-
-def fit_abs_isf_to_gaussian(
-    values: ValueList[_BT0],
-) -> GaussianFitData:
-    def gaussian(
-        x: np.ndarray[Any, np.dtype[np.float64]],
-        a: float,
-        b: float,
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
-        return a * np.exp(-1 * np.square(x / b) / 2)
-
-    x_data = BasisUtil(values["basis"]).nx_points
-    y_data = get_measured_data(values["data"], "abs")
-    parameters, covariance = curve_fit(gaussian, x_data, y_data)
-    fit_A = parameters[0]
-    fit_B = parameters[1]
-    dt = values["basis"].times[1]
-
-    return GaussianFitData(
-        fit_A,
-        np.sqrt(covariance[0][0]),
-        fit_B * dt,
-        np.sqrt(covariance[1][1]) * dt,
-    )
-
-
-def fit_abs_isf_to_double_gaussian(
-    values: ValueList[_BT0],
-) -> tuple[GaussianFitData, GaussianFitData]:
-    def double_gaussian(
-        x: np.ndarray[Any, np.dtype[np.float64]],
-        a1: float,
-        b1: float,
-        a2: float,
-        b2: float,
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
-        return a1 * np.exp(-1 * np.square(x / b1) / 2) + a2 * np.exp(
-            -1 * np.square(x / b2) / 2,
-        )
-
-    x_data = BasisUtil(values["basis"]).nx_points
-    y_data = get_measured_data(values["data"], "abs")
-    parameters, covariance = curve_fit(double_gaussian, x_data, y_data)
-    fit_A1 = parameters[0]
-    fit_B1 = parameters[1]
-    fit_A2 = parameters[2]
-    fit_B2 = parameters[3]
-    dt = values["basis"].times[1]
-
-    return (
-        GaussianFitData(
-            fit_A1,
-            np.sqrt(covariance[0][0]),
-            fit_B1 * dt,
-            np.sqrt(covariance[1][1]) * dt,
-        ),
-        GaussianFitData(
-            fit_A2,
-            np.sqrt(covariance[2][2]),
-            fit_B2 * dt,
-            np.sqrt(covariance[3][3]) * dt,
-        ),
-    )
-
-
-def truncate_value_list(
-    values: ValueList[EvenlySpacedTimeBasis[int, int, int]],
-    index: int,
-) -> ValueList[EvenlySpacedTimeBasis[int, int, int]]:
-    data = values["data"][0 : index + 1]
-    new_times = EvenlySpacedTimeBasis(index + 1, 1, 0, values["basis"].times[index])
-    return {"basis": new_times, "data": data}
-
-
 class MomentumBasis(FundamentalBasis[Any]):  # noqa: D101
     def __init__(self, k_points: np.ndarray[Any, np.dtype[np.float64]]) -> None:  # noqa: D107, ANN101
         self._k_points = k_points
@@ -471,6 +389,7 @@ def _get_ak_data_path(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
+    fit_method: FitMethod[Any] | None = None,  # noqa: ARG001
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
 ) -> Path:
@@ -478,54 +397,53 @@ def _get_ak_data_path(
     return Path(f"data/{hash((system, config))}.{hash(nk_points[0])}.npz")
 
 
+def get_value_list_index(
+    values: ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]],
+    index: int,
+) -> ValueList[MomentumBasis]:
+    basis = values["basis"][1]
+    full_data = values["data"].reshape((values["basis"][0].n, values["basis"][1].n))
+    data = full_data[index, :]
+    return {"basis": basis, "data": data}
+
+
 @npy_cached_dict(_get_ak_data_path, load_pickle=True)
 def get_ak_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
+    fit_method: FitMethod[Any] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-) -> ValueList[MomentumBasis]:
+) -> ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]]:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
-    free_time = get_free_particle_time(system, config, nk_points[0])
-    times = (
-        EvenlySpacedTimeBasis(
-            100,
-            1,
-            0,
-            4 * free_time,
-        )
-        if times is None
-        else times
-    )
 
-    rates = np.zeros(len(nk_points), dtype=np.complex128)
+    rates = np.zeros((fit_method.n_rates(), len(nk_points)), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     for i, direction in enumerate(nk_points):
+        free_time = fit_method.get_fit_time(system, config, direction)
+        time = EvenlySpacedTimeBasis(100, 1, 0, free_time) if times is None else times
+
         isf = _get_boltzmann_isf_from_hamiltonian(
             hamiltonian,
             config.temperature,
-            times,
+            time,
             direction,
             n_repeats=10,
         )
 
-        is_increasing = np.diff(np.abs(isf["data"])) > 0
-        first_increasing_idx = np.argmax(is_increasing).item()
-        idx = times.n - 1 if first_increasing_idx == 0 else first_increasing_idx
+        for j in range(fit_method.n_rates()):
+            rates[j][i] = fit_method.get_rates_from_isf(isf)[j]
 
-        truncated_isf = truncate_value_list(isf, idx)
-        rates[i] = 1 / fit_abs_isf_to_gaussian(truncated_isf).width
-        times = EvenlySpacedTimeBasis(
-            times.n,
-            times.step,
-            times.offset,
-            times.times[idx],
-        )
+    rates = rates.reshape(-1)
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
     basis = MomentumBasis(k_points)
-    return {"data": rates, "basis": basis}
+    return {
+        "data": rates,
+        "basis": TupleBasis(FundamentalBasis(fit_method.n_rates()), basis),
+    }
 
 
 def _get_scattered_energy_change(
@@ -631,3 +549,45 @@ def get_alpha_deltak_linear_fit(
     gradient, intercept = np.polyfit(k_points, rates, 1)
     effective_mass = calculate_effective_mass_from_gradient(config, gradient)
     return AlphaDeltakFitData(gradient, intercept, effective_mass)
+
+
+@timed
+def get_ak_temp_data(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    temperatures: list[int] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    temperatures = (
+        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
+    )
+    hamiltonian = get_hamiltonian(system, config)
+
+    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    data = np.zeros((len(temperatures), len(nk_points)))
+
+    for i, direction in enumerate(nk_points):
+        operator = get_periodic_x_operator_sparse(hamiltonian["basis"][0], direction)
+
+        for j, temperature in enumerate(temperatures):
+            time = 30 * np.sqrt(
+                system.mass / (Boltzmann * temperature * (k_points[i]) ** 2),
+            )
+            times = EvenlySpacedTimeBasis(200, 1, 0, time)
+            isf_data = np.zeros((10, times.n), dtype=np.complex128)
+
+            for k in range(10):
+                state = _get_random_boltzmann_state_from_hamiltonian(
+                    hamiltonian,
+                    temperature,
+                )
+                isf = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+                isf_data[k, :] = isf["data"]
+            mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+            isf_mean = ValueList(basis=times, data=mean)
+
+            data[j, i] = GaussianPlusExponentialMethod().get_rates_from_isf(isf_mean)[0]
+    return data, k_points

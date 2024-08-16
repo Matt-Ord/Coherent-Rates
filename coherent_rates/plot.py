@@ -40,7 +40,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     get_state_vector,
     state_vector_list_into_iter,
 )
-from surface_potential_analysis.util.plot import Scale, get_figure
+from surface_potential_analysis.util.plot import Scale, get_figure, plot_data_1d
 from surface_potential_analysis.util.squared_scale import SquaredScale
 from surface_potential_analysis.wavepacket.plot import (
     get_wavepacket_effective_mass,
@@ -51,9 +51,11 @@ from surface_potential_analysis.wavepacket.plot import (
     plot_wavepacket_transformed_energy_effective_mass_1d,
 )
 
+from coherent_rates.fit import GaussianMethod
 from coherent_rates.isf import (
     MomentumBasis,
     get_ak_data,
+    get_ak_temp_data,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
     get_free_particle_time,
@@ -61,6 +63,7 @@ from coherent_rates.isf import (
     get_random_boltzmann_state,
     get_scattered_energy_change_against_k,
     get_thermal_scattered_energy_change_against_k,
+    get_value_list_index,
 )
 from coherent_rates.system import (
     FreeSystem,
@@ -89,6 +92,8 @@ if TYPE_CHECKING:
     from surface_potential_analysis.wavepacket.wavepacket import (
         BlochWavefunctionListWithEigenvaluesList,
     )
+
+    from coherent_rates.fit import FitMethod
 
     _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
 
@@ -423,7 +428,7 @@ def _calculate_effective_mass_from_gradient(
     temperature: float,
     gradient: float,
 ) -> float:
-    return Boltzmann * temperature / (gradient**2)
+    return np.abs(Boltzmann * temperature / (gradient**2))
 
 
 @dataclass
@@ -474,39 +479,100 @@ def _plot_alpha_deltak(
     return fig, ax, line
 
 
+def plot_alpha_deltak(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
+) -> None:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    data = get_ak_data(
+        system,
+        config,
+        fit_method=fit_method,
+        nk_points=nk_points,
+        times=times,
+    )
+    fig, ax = get_figure(None)
+
+    for i in range(fit_method.n_rates()):
+        list_data = get_value_list_index(data, i)
+        _, _, line = _plot_alpha_deltak(list_data, ax=ax)
+        line.set_label(fit_method.get_curve_label()[i])
+
+        print(  # noqa: T201
+            "Mass, " + fit_method.get_curve_label()[i] + " =",
+            _calculate_effective_mass_from_gradient(
+                config.temperature,
+                _get_alpha_deltak_linear_fit(list_data).gradient,
+            ),
+        )
+
+    ax.set_ylim(0, ax.get_ylim()[1])
+    ax.set_xlim(0, ax.get_xlim()[1])
+    ax.legend()
+    ax.set_title("Plot of rate against delta k")
+
+    fig.show()
+    input()
+
+
 def plot_alpha_deltak_comparison(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
+    fit_method: FitMethod[Any] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
-    data = get_ak_data(system, config, nk_points=nk_points, times=times)
-    fig, ax, line = _plot_alpha_deltak(data)
-    line.set_label("bound system")
-
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    data = get_ak_data(
+        system,
+        config,
+        fit_method=fit_method,
+        nk_points=nk_points,
+        times=times,
+    )
     free_system = FreeSystem(system)
-    free_data = get_ak_data(free_system, config, nk_points=nk_points, times=times)
-    _, _, line = _plot_alpha_deltak(free_data, ax=ax)
-    line.set_label("free system")
+    free_data = get_ak_data(
+        free_system,
+        config,
+        fit_method=fit_method,
+        nk_points=nk_points,
+        times=times,
+    )
+    fig, ax = get_figure(None)
+
+    for i in range(fit_method.n_rates()):
+        list_data = get_value_list_index(data, i)
+        _, _, line = _plot_alpha_deltak(list_data, ax=ax)
+        line.set_label("Bound system," + fit_method.get_curve_label()[i])
+
+        free_list_data = get_value_list_index(free_data, i)
+        _, _, line = _plot_alpha_deltak(free_list_data, ax=ax)
+        line.set_label("Free system," + fit_method.get_curve_label()[i])
+
+        print(  # noqa: T201
+            "Bound mass, " + fit_method.get_curve_label()[i] + " =",
+            _calculate_effective_mass_from_gradient(
+                config.temperature,
+                _get_alpha_deltak_linear_fit(list_data).gradient,
+            ),
+        )
+        print(  # noqa: T201
+            "Free mass, " + fit_method.get_curve_label()[i] + " =",
+            _calculate_effective_mass_from_gradient(
+                config.temperature,
+                _get_alpha_deltak_linear_fit(free_list_data).gradient,
+            ),
+        )
 
     ax.set_ylim(0, ax.get_ylim()[1])
     ax.set_xlim(0, ax.get_xlim()[1])
     ax.legend()
     ax.set_title("plot of rate against delta k, comparing to a free particle")
-
-    print(  # noqa: T201
-        "Bound mass =",
-        _calculate_effective_mass_from_gradient(
-            config.temperature,
-            _get_alpha_deltak_linear_fit(data).gradient,
-        ),
-        "Free mass =",
-        _calculate_effective_mass_from_gradient(
-            config.temperature,
-            _get_alpha_deltak_linear_fit(free_data).gradient,
-        ),
-    )
 
     fig.show()
     input()
@@ -606,5 +672,44 @@ def plot_occupation_against_energy_comparison(
     ax.set_xlim(0, 10 * system.barrier_energy)
     ax.set_ylim(0)
     ax.legend()
+    fig.show()
+    input()
+
+
+def plot_ak_temp_data(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    temperatures: list[int] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    temperatures = (
+        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
+    )
+    data, k_points = get_ak_temp_data(
+        system,
+        config,
+        temperatures=temperatures,
+        nk_points=nk_points,
+    )
+    print(data)
+    fig, ax = get_figure(None)
+
+    effective_masses = np.zeros(len(temperatures))
+
+    for i, temperature in enumerate(temperatures):
+        value = {"basis": MomentumBasis(k_points), "data": data[i, :]}
+        fig, ax, line = _plot_alpha_deltak(value, ax=ax)
+        line.set_label(f"T={temperature}K")
+        effective_masses[i] = _calculate_effective_mass_from_gradient(
+            temperature,
+            _get_alpha_deltak_linear_fit(value).gradient,
+        )
+    ax.legend()
+    fig.show()
+
+    fig, ax, line = plot_data_1d(effective_masses, temperatures)
+    ax.set_xlabel("Temperature/K")
+    ax.set_ylabel("Effective mass/kg")
     fig.show()
     input()
