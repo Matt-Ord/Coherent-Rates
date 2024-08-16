@@ -31,7 +31,9 @@ from surface_potential_analysis.operator.operator import (
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
 )
-from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
+from surface_potential_analysis.state_vector.plot import (
+    get_periodic_x_operator,
+)
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
@@ -294,6 +296,7 @@ def _get_boltzmann_isf_from_hamiltonian(
     }
 
 
+@timed
 def get_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
