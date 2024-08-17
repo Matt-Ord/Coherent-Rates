@@ -49,6 +49,7 @@ from surface_potential_analysis.stacked_basis.conversion import (
     stacked_basis_as_fundamental_position_basis,
 )
 from surface_potential_analysis.state_vector.state_vector import calculate_normalization
+from surface_potential_analysis.util.decorators import timed
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     BlochBasis,
     get_full_bloch_hamiltonian,
@@ -390,6 +391,7 @@ def get_bloch_wavefunctions(
     )
 
 
+@timed
 def get_hamiltonian(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
