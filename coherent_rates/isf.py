@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann
+from scipy.constants import Boltzmann  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalTransformedBasis,
@@ -29,6 +29,9 @@ from surface_potential_analysis.operator.operator import (
 )
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
+)
+from surface_potential_analysis.state_vector.eigenstate_list import (
+    ValueList,
 )
 from surface_potential_analysis.state_vector.plot import (
     get_periodic_x_operator,
@@ -357,7 +360,7 @@ class MomentumBasis(FundamentalBasis[Any]):  # noqa: D101
         super().__init__(k_points.size)
 
     @property
-    def k_points(self: Self) -> np.ndarray[Any, np.dtype[np.float64]]:  # noqa: D102
+    def k_points(self: Self) -> np.ndarray[Any, np.dtype[np.float64]]:
         return self._k_points
 
 
@@ -370,7 +373,7 @@ def get_free_particle_time(
     basis = system.get_potential(config.shape, config.resolution)["basis"]
     dk_stacked = BasisUtil(basis).dk_stacked
 
-    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))
+    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))  # type: ignore library type
     k = np.linalg.norm(dk_stacked[0]) if k == 0 else k
 
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
@@ -449,7 +452,7 @@ def get_rate_against_momentum_data(
         rates[:, i] = fit_method.get_rates_from_isf(isf)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
     return {
         "data": rates.ravel(),
@@ -511,7 +514,7 @@ def get_thermal_scattered_energy_change_against_k(
         standard_deviation[i] = np.std(data)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
     return {
         "data": energy_change,
@@ -534,7 +537,7 @@ def get_scattered_energy_change_against_k(
         energy_change[i] = _get_scattered_energy_change(hamiltonian, state, k_point)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
     return {"data": energy_change, "basis": basis}
 

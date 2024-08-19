@@ -42,7 +42,7 @@ def plot_isf_with_fit(
     fig, ax, line = plot_value_list_against_time(fitted_data, ax=ax)
     line.set_label("Fit")
 
-    ax.legend()
+    ax.legend()  # type: ignore bad types
     fig.show()
     input()
 
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     times = EvenlySpacedTimeBasis(200, 1, 0, 2e-11)
     potential = system.get_potential(config.shape, config.resolution)
     dk_stacked = BasisUtil(potential["basis"]).dk_stacked
-    k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))
+    k_length = np.linalg.norm(np.einsum("j,jk->k", direction, dk_stacked))  # type: ignore bad types
 
     isf = get_boltzmann_isf(system, config, times, direction, n_repeats=20)
 

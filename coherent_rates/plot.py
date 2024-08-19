@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, Iterable, TypeVar, cast
 
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.constants import Boltzmann
+from matplotlib.axes import Axes
+from scipy.constants import Boltzmann  # type: ignore library type
 from surface_potential_analysis.basis.basis_like import BasisLike
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisLike,
@@ -78,7 +79,6 @@ from coherent_rates.system import (
 )
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
     from surface_potential_analysis.basis.basis_like import BasisLike
@@ -116,8 +116,8 @@ def plot_system_eigenstates_1d(
     hamiltonian = get_hamiltonian(system, config)
     eigenvectors = hamiltonian["basis"][0].vectors
 
-    ax1 = ax.twinx()
-    fig2, ax2 = plt.subplots()
+    ax1 = cast(Axes, ax.twinx())
+    fig2, ax2 = plt.subplots()  # type: ignore library type
     for _i, state in enumerate(state_vector_list_into_iter(eigenvectors)):
         plot_state_1d_x(state, ax=ax1)
 
@@ -188,8 +188,8 @@ def plot_wavepacket_transformed_energy_rate(  # noqa: PLR0913
     )
     line.set_label("Thermal Rate")
 
-    ax.set_xlabel("Band Index")
-    ax.set_ylabel("Rate / s^-1")
+    ax.set_xlabel("Band Index")  # type: ignore library type
+    ax.set_ylabel("Rate / s^-1")  # type: ignore library type
     ax.set_ylim((0.0, ax.get_ylim()[1]))
 
     return fig, ax, line
@@ -213,7 +213,7 @@ def plot_system_bands(
         free_mass=system.mass,
         measure="abs",
     )
-    ax.legend()
+    ax.legend()  # type: ignore library type
     fig.show()
 
     fig, _, _ = plot_wavepacket_transformed_energy_effective_mass_1d(
@@ -228,10 +228,10 @@ def plot_system_bands(
     _, _, line1 = plot_occupation_against_band(
         wavefunctions,
         config.temperature,
-        ax=ax.twinx(),
+        ax=cast(Axes, ax.twinx()),
     )
     line1.set_color("C1")
-    ax.legend(handles=[line0, line1])
+    ax.legend(handles=[line0, line1])  # type: ignore library type
     fig.show()
     input()
 
@@ -274,7 +274,7 @@ def plot_system_evolution_1d(
     potential = system.get_potential(config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
-    ax1 = ax.twinx()
+    ax1 = cast(Axes, ax.twinx())
     states = solve_schrodinger_equation(system, config, initial_state, times)
 
     fig, ax, _anim = animate_state_over_list_1d_x(states, ax=ax1)
@@ -297,7 +297,7 @@ def plot_system_evolution_2d(
     input()
 
 
-def plot_pair_system_evolution_1d(
+def plot_pair_system_evolution_1d(  # noqa: PLR0913
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any],
@@ -316,7 +316,7 @@ def plot_pair_system_evolution_1d(
     potential = system.get_potential(config.shape, config.resolution)
     fig, ax, line = plot_potential_1d_x(potential)
     line.set_color("orange")
-    ax1 = ax.twinx()
+    ax1 = cast(Axes, ax.twinx())
 
     (
         state_evolved_scattered,
@@ -336,7 +336,7 @@ def plot_pair_system_evolution_1d(
 
     fig.show()
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots()  # type: ignore library type
     fig, ax, _anim3 = animate_state_over_list_1d_k(
         state_evolved_scattered,
         ax=ax,
@@ -390,9 +390,9 @@ def plot_boltzmann_isf(
 
     fig, ax, line = plot_value_list_against_time(data, ax=ax, measure="imag")
     line.set_label("imag ISF")
-    ax.legend()
+    ax.legend()  # type: ignore library type
 
-    ax.set_title("Plot of the ISF against time")
+    ax.set_title("Plot of the ISF against time")  # type: ignore library type
 
     fig.show()
 
@@ -402,8 +402,8 @@ def plot_boltzmann_isf(
     line.set_label("imag ISF")
     fig, ax, line = plot_value_list_against_frequency(data, measure="real", ax=ax)
     line.set_label("real ISF")
-    ax.legend()
-    ax.set_title("Plot of the fourier transform of the ISF against time")
+    ax.legend()  # type: ignore library type
+    ax.set_title("Plot of the fourier transform of the ISF against time")  # type: ignore library type
     fig.show()
 
     input()
@@ -431,7 +431,7 @@ def plot_band_resolved_boltzmann_isf(
 
     fig.show()
     fig, ax = plot_split_value_list_against_frequency(resolved_data)
-    ax.set_title("Plot of the fourier transform of the ISF against time")
+    ax.set_title("Plot of the fourier transform of the ISF against time")  # type: ignore library type
     fig.show()
     input()
 
@@ -456,13 +456,16 @@ def _get_rate_against_momentum_linear_fit(
 ) -> _RateAgainstMomentumFitData:
     k_points = values["basis"].k_points
     rates = values["data"]
-    fit = np.polynomial.Polynomial.fit(
-        k_points,
-        rates,
-        deg=[1],
-        domain=(0, np.max(k_points)),
-        window=(0, np.max(k_points)),
-    ).coef
+    fit = cast(
+        np.ndarray[Any, np.dtype[np.float64]],
+        np.polynomial.Polynomial.fit(  # type: ignore bad library type
+            k_points,
+            rates,
+            deg=[1],
+            domain=(0, np.max(k_points)),
+            window=(0, np.max(k_points)),
+        ).coef,
+    )
     return _RateAgainstMomentumFitData(fit[1], fit[0])
 
 
@@ -480,11 +483,11 @@ def _plot_rate_against_momentum(
     k_points = data["basis"].k_points
     x_fit = np.array([0, k_points[-1] * 1.2])
     y_fit = fit.gradient * x_fit + fit.intercept
-    (fit_line,) = ax.plot(x_fit, y_fit)
+    (fit_line,) = ax.plot(x_fit, y_fit)  # type: ignore library type
     fit_line.set_color(line.get_color())
 
-    ax.set_xlabel("delta k /$m^{-1}$")
-    ax.set_ylabel("rate")
+    ax.set_xlabel("delta k /$m^{-1}$")  # type: ignore library type
+    ax.set_ylabel("rate")  # type: ignore library type
 
     return fig, ax, line
 
@@ -522,8 +525,8 @@ def plot_rate_against_momentum(
 
     ax.set_ylim(0, ax.get_ylim()[1])
     ax.set_xlim(0, ax.get_xlim()[1])
-    ax.legend()
-    ax.set_title("Plot of rate against delta k")
+    ax.legend()  # type: ignore library type
+    ax.set_title("Plot of rate against delta k")  # type: ignore library type
 
     fig.show()
     input()
@@ -581,8 +584,8 @@ def plot_rate_against_momentum_comparison(
 
     ax.set_ylim(0, ax.get_ylim()[1])
     ax.set_xlim(0, ax.get_xlim()[1])
-    ax.legend()
-    ax.set_title("plot of rate against delta k, comparing to a free particle")
+    ax.legend()  # type: ignore library type
+    ax.set_title("plot of rate against delta k, comparing to a free particle")  # type: ignore library type
 
     fig.show()
     input()
@@ -614,9 +617,9 @@ def plot_thermal_scattered_energy_change_comparison(
     fig, ax, line1 = plot_value_list_against_momentum(free_data, ax=ax)
     line1.set_label("Free")
 
-    ax.legend()
-    ax.set_xscale(SquaredScale(axis=None))
-    ax.set_ylabel("Energy change /J")
+    ax.legend()  # type: ignore library type
+    ax.set_xscale(SquaredScale(axis=None))  # type: ignore library type
+    ax.set_ylabel("Energy change /J")  # type: ignore library type
 
     fig.show()
     input()
@@ -636,14 +639,14 @@ def plot_scattered_energy_change_state(
         nk_points=nk_points,
     )
     fig, ax, _ = plot_value_list_against_momentum(bound_data)
-    ax.set_xscale(SquaredScale(axis=None))
-    ax.set_title("Quadratic")
-    ax.set_ylabel("Energy change /J")
+    ax.set_xscale(SquaredScale(axis=None))  # type: ignore library type
+    ax.set_title("Quadratic")  # type: ignore library type
+    ax.set_ylabel("Energy change /J")  # type: ignore library type
     fig.show()
 
     fig, ax, _ = plot_value_list_against_momentum(bound_data)
-    ax.set_title("Linear")
-    ax.set_ylabel("Energy change /J")
+    ax.set_title("Linear")  # type: ignore library type
+    ax.set_ylabel("Energy change /J")  # type: ignore library type
     fig.show()
 
     input()
@@ -679,11 +682,11 @@ def plot_occupation_against_energy_comparison(
     )
     line1.set_label(f"{mass_ratio}$\\times$ mass")
 
-    ax.axvline(system.barrier_energy, color="black", ls="--")
+    ax.axvline(system.barrier_energy, color="black", ls="--")  # type: ignore library type
 
     ax.set_xlim(0, 10 * system.barrier_energy)
     ax.set_ylim(0)
-    ax.legend()
+    ax.legend()  # type: ignore library type
     fig.show()
     input()
 
@@ -710,7 +713,7 @@ def plot_rate_against_temperature_and_momentum_data(
     for j in range(fit_method.n_rates()):
         fig, ax = get_figure(None)
 
-        effective_masses = np.zeros(len(temperatures))
+        effective_masses = np.zeros(len(temperatures), dtype=np.complex128)
 
         for i, temperature in enumerate(temperatures):
             value = get_value_list_at_idx(data, j + i)
@@ -720,14 +723,14 @@ def plot_rate_against_temperature_and_momentum_data(
                 temperature,
                 _get_rate_against_momentum_linear_fit(value).gradient,
             )
-        ax.legend()
-        ax.set_title(f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum")
+        ax.legend()  # type: ignore unknown
+        ax.set_title(f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum")  # type: ignore unknown
         fig.show()
 
-        fig, ax, line = plot_data_1d(effective_masses, temperatures)
-        ax.set_xlabel("Temperature/K")
-        ax.set_ylabel("Effective mass/kg")
-        ax.set_title(
+        fig, ax, line = plot_data_1d(effective_masses, np.asarray(temperatures))
+        ax.set_xlabel("Temperature/K")  # type: ignore unknown
+        ax.set_ylabel("Effective mass/kg")  # type: ignore unknown
+        ax.set_title(  # type: ignore unknown
             f"Plot of Effective mass against temperature for {fit_method.get_rate_labels()[j]} rate",
         )
         fig.show()
