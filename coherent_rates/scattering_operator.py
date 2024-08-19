@@ -84,7 +84,7 @@ def as_operator_from_sparse_scattering_operator(
         -1,
     )
 
-    rolled = np.einsum("ijk,kl->ikjl", stacked, np.eye(stacked.shape[-1])).reshape(
+    rolled = np.einsum("ijk,kl->ikjl", stacked, np.eye(stacked.shape[-1])).reshape(  # type: ignore bad types
         basis[0].n,
         *basis[1].shape,
         basis[0].n,
@@ -118,7 +118,7 @@ def as_sparse_scattering_operator_from_operator(
         axis=tuple(1 + i for i in range(basis[1].ndim)),
     ).reshape(*basis.shape, *basis.shape)
 
-    data = np.einsum("ijkj->ikj", rolled).ravel()
+    data = np.einsum("ijkj->ikj", rolled).ravel()  # type: ignore bad types
     return {"basis": operator["basis"], "direction": direction, "data": data}
 
 
@@ -127,7 +127,7 @@ def apply_scattering_operator_to_state(
     state: StateVector[_B2],
 ) -> StateVector[_B0]:
     converted = convert_state_vector_to_basis(state, operator["basis"][1])
-    data = np.einsum(
+    data = np.einsum(  # type: ignore bad types
         "ijk,jk->ik",
         # band (out), band (in), bloch k
         operator["data"].reshape(
@@ -158,7 +158,7 @@ def apply_scattering_operator_to_states(
     states: StateVectorList[_B2, _B1],
 ) -> StateVectorList[_B2, _B0]:
     converted = convert_state_vector_list_to_basis(states, operator["basis"][1])
-    data = np.einsum(
+    data = np.einsum(  # type: ignore bad types
         "ijk,ljk->lik",
         # band (out), band (in), bloch k
         operator["data"].reshape(
