@@ -81,7 +81,6 @@ from coherent_rates.system import (
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
-    from surface_potential_analysis.basis.basis import FundamentalBasis
     from surface_potential_analysis.basis.basis_like import BasisLike
     from surface_potential_analysis.basis.explicit_basis import (
         ExplicitStackedBasisWithLength,
@@ -457,7 +456,7 @@ def _get_rate_against_momentum_linear_fit(
     values: ValueList[MomentumBasis],
 ) -> _RateAgainstMomentumFitData:
     k_points = values["basis"].k_points
-    rates = values["data"]
+    rates = np.real(values["data"])
     fit = cast(
         np.ndarray[Any, np.dtype[np.float64]],
         np.polynomial.Polynomial.fit(  # type: ignore bad library type
@@ -485,7 +484,7 @@ def _plot_rate_against_momentum(
     k_points = data["basis"].k_points
     x_fit = np.array([0, k_points[-1] * 1.2])
     y_fit = fit.gradient * x_fit + fit.intercept
-    (fit_line,) = ax.plot(x_fit, y_fit)  # type: ignore library type
+    _, _, fit_line = plot_data_1d(y_fit, x_fit, ax=ax, measure="real")  # type: ignore library type
     fit_line.set_color(line.get_color())
 
     ax.set_xlabel("delta k /$m^{-1}$")  # type: ignore library type
@@ -694,7 +693,7 @@ def plot_occupation_against_energy_comparison(
 
 
 def get_effective_masses(
-    data: ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]],
+    data: ValueList[TupleBasis[_B0, MomentumBasis]],
     temperatures: list[int],
     *,
     rate_index: int = 0,
@@ -744,7 +743,8 @@ def plot_rate_against_temperature_and_momentum_data(
         ax.set_xlabel("Temperature/K")  # type: ignore unknown
         ax.set_ylabel("Effective mass/kg")  # type: ignore unknown
         ax.set_title(  # type: ignore unknown
-            f"Plot of Effective mass against temperature for {fit_method.get_rate_labels()[j]} rate",
+            "Plot of Effective mass against temperature for"
+            f" {fit_method.get_rate_labels()[j]} rate",
         )
         fig.show()
     input()

@@ -46,7 +46,7 @@ class FitMethod(ABC, Generic[T]):
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
         ...
 
     @staticmethod
@@ -67,6 +67,11 @@ class FitMethod(ABC, Generic[T]):
     @staticmethod
     @abstractmethod
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
+        ...
+
+    @classmethod
+    @abstractmethod
+    def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
         ...
 
     @staticmethod
@@ -95,11 +100,12 @@ class FitMethod(ABC, Generic[T]):
                 self._fit_fn,
                 data["basis"].times / dt,
                 y_data,
+                p0=self._fit_param_initial_guess(),
                 bounds=self._fit_param_bounds(),
             ),
         )
 
-        return self._fit_from_params(dt, *parameters)
+        return self._fit_from_params(dt.item(), *parameters)
 
     def get_rates_from_isf(
         self: Self,
@@ -115,7 +121,7 @@ class FitMethod(ABC, Generic[T]):
         basis: _BT0,
     ) -> ValueList[_BT0]:
         data = cls._fit_fn(basis.times, *cls._params_from_fit(fit))
-        return {"basis": basis, "data": data}
+        return {"basis": basis, "data": data.astype(np.complex128)}
 
     @classmethod
     def get_function_for_fit(
@@ -123,6 +129,10 @@ class FitMethod(ABC, Generic[T]):
         fit: T,
     ) -> Callable[[_BT0], ValueList[_BT0]]:
         return functools.partial(cls.get_fitted_data, fit)
+
+    @classmethod
+    def n_params(cls: type[Self]) -> int:
+        return len(cls._fit_param_initial_guess())
 
     @classmethod
     def n_rates(cls: type[Self]) -> int:
@@ -173,9 +183,9 @@ class GaussianMethod(FitMethod[GaussianParameters]):
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
         a, b = params
-        return (1 - a) + a * np.exp(-1 * np.square(x / b) / 2).astype(np.complex128)
+        return (1 - a) + a * np.exp(-1 * np.square(x / b) / 2)
 
     @staticmethod
     def _params_from_fit(
@@ -193,6 +203,10 @@ class GaussianMethod(FitMethod[GaussianParameters]):
     @staticmethod
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, -np.inf], [1, np.inf])
+
+    @classmethod
+    def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
+        return [1, 1]
 
     def get_fit_from_isf(
         self: Self,
@@ -238,14 +252,18 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
         a, b, c, d = params
         return (
             (1 - a - c)
             + a * np.exp(-1 * np.square(x / b) / 2)
             + c * np.exp(-1 * np.square(x / d) / 2)
             - 1000 * max(a + c - 1, 0)
-        ).astype(np.complex128)
+        )
+
+    @classmethod
+    def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
+        return [0.5, 1, 0.5, 2]
 
     @staticmethod
     def _params_from_fit(
@@ -310,9 +328,9 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
         a, b = params
-        return (1 - a) + a * np.exp(-1 * x / b).astype(np.complex128)
+        return (1 - a) + a * np.exp(-1 * x / b)
 
     @staticmethod
     def _params_from_fit(
@@ -330,6 +348,10 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
     @staticmethod
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, -np.inf], [1, np.inf])
+
+    @classmethod
+    def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
+        return [1, 1]
 
     @classmethod
     def get_rates_from_fit(
@@ -350,6 +372,10 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
     ) -> float:
         return 40 * _get_free_particle_time(system, config, direction)
 
+    @classmethod
+    def n_params(cls: type[Self]) -> int:
+        return 2
+
 
 class GaussianPlusExponentialMethod(
     FitMethod[tuple[GaussianParameters, ExponentialParameters]],
@@ -365,14 +391,14 @@ class GaussianPlusExponentialMethod(
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
         a, b, c, d = params
         return (
             (1 - a - c)
             + a * np.exp(-1 * np.square(x / b) / 2)
             + c * np.exp(-1 * x / d)
             - 1000 * max(a + c - 1, 0)
-        ).astype(np.complex128)
+        )
 
     @staticmethod
     def _params_from_fit(
@@ -393,6 +419,10 @@ class GaussianPlusExponentialMethod(
     @staticmethod
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf])
+
+    @classmethod
+    def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
+        return [0.5, 1, 0.5, 1]
 
     @classmethod
     def get_rates_from_fit(

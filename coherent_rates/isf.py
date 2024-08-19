@@ -406,7 +406,7 @@ def _get_ak_data_path(
 
 
 def get_value_list_at_idx(
-    values: ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]],
+    values: ValueList[TupleBasis[_B0, MomentumBasis]],
     index: int,
 ) -> ValueList[MomentumBasis]:
     basis = values["basis"][1]
@@ -577,17 +577,21 @@ def get_rate_against_temperature_and_momentum_data(
     fit_method: FitMethod[Any] | None = None,
     temperatures: list[int] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
-) -> ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]]:
+) -> ValueList[
+    TupleBasis[TupleBasis[FundamentalBasis[int], FundamentalBasis[int]], MomentumBasis]
+]:
     fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
     temperatures = (
         [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
     )
-    hamiltonian = get_hamiltonian(system, config)
 
-    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
-    data = np.zeros((fit_method.n_rates(), len(temperatures), len(nk_points)))
+    n_rates = fit_method.n_rates()
+    n_temperatures = len(temperatures)
+    data = np.zeros(
+        (n_rates, n_temperatures, len(nk_points)),
+        dtype=np.complex128,
+    )
 
     for j, temperature in enumerate(temperatures):
         config.temperature = temperature
@@ -597,14 +601,21 @@ def get_rate_against_temperature_and_momentum_data(
             fit_method=fit_method,
             nk_points=nk_points,
         )["data"]
-        rate_data = rate_data.reshape(fit_method.n_rates(), len(nk_points))
+        rate_data = rate_data.reshape(n_rates, -1)
         data[:, j, :] = rate_data
 
+    hamiltonian = get_hamiltonian(system, config)
+    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore einsum
     basis = MomentumBasis(k_points)
+
     return {
         "data": data.ravel(),
         "basis": TupleBasis(
-            FundamentalBasis(fit_method.n_rates() * len(temperatures)),
+            TupleBasis(
+                FundamentalBasis(n_rates),
+                FundamentalBasis(n_temperatures),
+            ),
             basis,
         ),
     }
