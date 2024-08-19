@@ -52,19 +52,19 @@ from surface_potential_analysis.wavepacket.plot import (
     plot_wavepacket_transformed_energy_effective_mass_1d,
 )
 
-from coherent_rates.fit import GaussianMethod
+from coherent_rates.fit import GaussianMethod, GaussianPlusExponentialMethod
 from coherent_rates.isf import (
     MomentumBasis,
-    get_ak_data,
-    get_ak_temp_data,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
     get_free_particle_time,
     get_isf_pair_states,
     get_random_boltzmann_state,
+    get_rate_against_momentum_data,
+    get_rate_against_temperature_and_momentum_data,
     get_scattered_energy_change_against_k,
     get_thermal_scattered_energy_change_against_k,
-    get_value_list_index,
+    get_value_list_at_idx,
 )
 from coherent_rates.system import (
     FreeSystem,
@@ -444,16 +444,16 @@ def _calculate_effective_mass_from_gradient(
 
 
 @dataclass
-class _AlphaDeltakFitData:
+class _RateAgainstMomentumFitData:
     """_Stores data from linear fit with calculated effective mass."""
 
     gradient: float
     intercept: float
 
 
-def _get_alpha_deltak_linear_fit(
+def _get_rate_against_momentum_linear_fit(
     values: ValueList[MomentumBasis],
-) -> _AlphaDeltakFitData:
+) -> _RateAgainstMomentumFitData:
     k_points = values["basis"].k_points
     rates = values["data"]
     fit = np.polynomial.Polynomial.fit(
@@ -463,10 +463,10 @@ def _get_alpha_deltak_linear_fit(
         domain=(0, np.max(k_points)),
         window=(0, np.max(k_points)),
     ).coef
-    return _AlphaDeltakFitData(fit[1], fit[0])
+    return _RateAgainstMomentumFitData(fit[1], fit[0])
 
 
-def _plot_alpha_deltak(
+def _plot_rate_against_momentum(
     data: ValueList[MomentumBasis],
     *,
     ax: Axes | None = None,
@@ -475,7 +475,7 @@ def _plot_alpha_deltak(
     line.set_linestyle("")
     line.set_marker("x")
 
-    fit = _get_alpha_deltak_linear_fit(data)
+    fit = _get_rate_against_momentum_linear_fit(data)
 
     k_points = data["basis"].k_points
     x_fit = np.array([0, k_points[-1] * 1.2])
@@ -489,7 +489,7 @@ def _plot_alpha_deltak(
     return fig, ax, line
 
 
-def plot_alpha_deltak(
+def plot_rate_against_momentum(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
@@ -498,7 +498,7 @@ def plot_alpha_deltak(
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
     fit_method = GaussianMethod() if fit_method is None else fit_method
-    data = get_ak_data(
+    data = get_rate_against_momentum_data(
         system,
         config,
         fit_method=fit_method,
@@ -508,15 +508,15 @@ def plot_alpha_deltak(
     fig, ax = get_figure(None)
 
     for i in range(fit_method.n_rates()):
-        list_data = get_value_list_index(data, i)
-        _, _, line = _plot_alpha_deltak(list_data, ax=ax)
-        line.set_label(fit_method.get_curve_label()[i])
+        list_data = get_value_list_at_idx(data, i)
+        _, _, line = _plot_rate_against_momentum(list_data, ax=ax)
+        line.set_label(fit_method.get_rate_labels()[i])
 
         print(  # noqa: T201
-            "Mass, " + fit_method.get_curve_label()[i] + " =",
+            f"Mass, {fit_method.get_rate_labels()[i]} =",
             _calculate_effective_mass_from_gradient(
                 config.temperature,
-                _get_alpha_deltak_linear_fit(list_data).gradient,
+                _get_rate_against_momentum_linear_fit(list_data).gradient,
             ),
         )
 
@@ -529,7 +529,7 @@ def plot_alpha_deltak(
     input()
 
 
-def plot_alpha_deltak_comparison(
+def plot_rate_against_momentum_comparison(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
@@ -538,7 +538,7 @@ def plot_alpha_deltak_comparison(
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
     fit_method = GaussianMethod() if fit_method is None else fit_method
-    data = get_ak_data(
+    data = get_rate_against_momentum_data(
         system,
         config,
         fit_method=fit_method,
@@ -546,7 +546,7 @@ def plot_alpha_deltak_comparison(
         times=times,
     )
     free_system = FreeSystem(system)
-    free_data = get_ak_data(
+    free_data = get_rate_against_momentum_data(
         free_system,
         config,
         fit_method=fit_method,
@@ -556,26 +556,26 @@ def plot_alpha_deltak_comparison(
     fig, ax = get_figure(None)
 
     for i in range(fit_method.n_rates()):
-        list_data = get_value_list_index(data, i)
-        _, _, line = _plot_alpha_deltak(list_data, ax=ax)
-        line.set_label("Bound system," + fit_method.get_curve_label()[i])
+        list_data = get_value_list_at_idx(data, i)
+        _, _, line = _plot_rate_against_momentum(list_data, ax=ax)
+        line.set_label(f"Bound system, {fit_method.get_rate_labels()[i]}")
 
-        free_list_data = get_value_list_index(free_data, i)
-        _, _, line = _plot_alpha_deltak(free_list_data, ax=ax)
-        line.set_label("Free system," + fit_method.get_curve_label()[i])
+        free_list_data = get_value_list_at_idx(free_data, i)
+        _, _, line = _plot_rate_against_momentum(free_list_data, ax=ax)
+        line.set_label(f"Free system, {fit_method.get_rate_labels()[i]}")
 
         print(  # noqa: T201
-            "Bound mass, " + fit_method.get_curve_label()[i] + " =",
+            f"Bound mass, {fit_method.get_rate_labels()[i]} =",
             _calculate_effective_mass_from_gradient(
                 config.temperature,
-                _get_alpha_deltak_linear_fit(list_data).gradient,
+                _get_rate_against_momentum_linear_fit(list_data).gradient,
             ),
         )
         print(  # noqa: T201
-            "Free mass, " + fit_method.get_curve_label()[i] + " =",
+            f"Free mass, {fit_method.get_rate_labels()[i]} =",
             _calculate_effective_mass_from_gradient(
                 config.temperature,
-                _get_alpha_deltak_linear_fit(free_list_data).gradient,
+                _get_rate_against_momentum_linear_fit(free_list_data).gradient,
             ),
         )
 
@@ -688,40 +688,47 @@ def plot_occupation_against_energy_comparison(
     input()
 
 
-def plot_ak_temp_data(
+def plot_rate_against_temperature_and_momentum_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
+    fit_method: FitMethod[Any] | None = None,
     temperatures: list[int] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
+    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
     temperatures = (
         [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
     )
-    data, k_points = get_ak_temp_data(
+    data = get_rate_against_temperature_and_momentum_data(
         system,
         config,
+        fit_method=fit_method,
         temperatures=temperatures,
         nk_points=nk_points,
     )
-    print(data)
-    fig, ax = get_figure(None)
+    for j in range(fit_method.n_rates()):
+        fig, ax = get_figure(None)
 
-    effective_masses = np.zeros(len(temperatures))
+        effective_masses = np.zeros(len(temperatures))
 
-    for i, temperature in enumerate(temperatures):
-        value = {"basis": MomentumBasis(k_points), "data": data[i, :]}
-        fig, ax, line = _plot_alpha_deltak(value, ax=ax)
-        line.set_label(f"T={temperature}K")
-        effective_masses[i] = _calculate_effective_mass_from_gradient(
-            temperature,
-            _get_alpha_deltak_linear_fit(value).gradient,
+        for i, temperature in enumerate(temperatures):
+            value = get_value_list_at_idx(data, j + i)
+            fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
+            line.set_label(f"T={temperature}K")
+            effective_masses[i] = _calculate_effective_mass_from_gradient(
+                temperature,
+                _get_rate_against_momentum_linear_fit(value).gradient,
+            )
+        ax.legend()
+        ax.set_title(f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum")
+        fig.show()
+
+        fig, ax, line = plot_data_1d(effective_masses, temperatures)
+        ax.set_xlabel("Temperature/K")
+        ax.set_ylabel("Effective mass/kg")
+        ax.set_title(
+            f"Plot of Effective mass against temperature for {fit_method.get_rate_labels()[j]} rate",
         )
-    ax.legend()
-    fig.show()
-
-    fig, ax, line = plot_data_1d(effective_masses, temperatures)
-    ax.set_xlabel("Temperature/K")
-    ax.set_ylabel("Effective mass/kg")
-    fig.show()
+        fig.show()
     input()

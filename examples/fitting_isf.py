@@ -62,28 +62,16 @@ if __name__ == "__main__":
 
     # Exponential fitting
     exp = ExponentialMethod().get_fit_from_isf(isf)
-    print(exp)
-    print(k_length)
-    print(ExponentialMethod.get_rates_from_fit(exp))
     plot_isf_with_fit(isf, ExponentialMethod())
 
     # Gaussian fitting
     gauss = GaussianMethod().get_fit_from_isf(isf)
-    print(gauss)
-    print(k_length)
-    print(GaussianMethod.get_rates_from_fit(gauss))
     plot_isf_with_fit(isf, GaussianMethod())
 
     # Guassian + Exponential fitting
     gauss, exp = GaussianPlusExponentialMethod().get_fit_from_isf(isf)
-    print(gauss, exp)
-    print(k_length)
-    print(GaussianPlusExponentialMethod.get_rates_from_fit((gauss, exp)))
     plot_isf_with_fit(isf, GaussianPlusExponentialMethod())
 
     # Double Gaussian fitting
     gauss1, gauss2 = DoubleGaussianMethod().get_fit_from_isf(isf)
-    print(gauss1, gauss2)
-    print(k_length)
-    print(DoubleGaussianMethod.get_rates_from_fit((gauss1, gauss2)))
     plot_isf_with_fit(isf, DoubleGaussianMethod())

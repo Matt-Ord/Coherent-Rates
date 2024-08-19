@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Generic, Self, TypeVar
@@ -70,12 +71,12 @@ class FitMethod(ABC, Generic[T]):
 
     @staticmethod
     @abstractmethod
-    def get_curve_label() -> tuple[str, ...]:
+    def get_rate_labels() -> tuple[str, ...]:
         ...
 
     @classmethod
     def n_rates(cls: type[Self]) -> int:
-        return len(cls.get_curve_label())
+        return len(cls.get_rate_labels())
 
     @abstractmethod
     def get_fit_time(
@@ -118,8 +119,10 @@ class GaussianParameters:
 
 
 class GaussianMethod(FitMethod[GaussianParameters]):
-    def __hash__(self: Self) -> int:
-        return hash("GaussianMethod")
+    def __hash__(self: Self) -> int:  # noqa: D105
+        h = hashlib.sha256(usedforsecurity=False)
+        h.update(b"GaussianMethod")
+        return int.from_bytes(h.digest(), "big")
 
     def get_fit_from_isf(
         self: Self,
@@ -179,13 +182,9 @@ class GaussianMethod(FitMethod[GaussianParameters]):
         )
         return {"basis": basis, "data": y_fit.astype(np.complex128)}
 
-    def get_curve_label(
-        self: Self,
-    ) -> tuple[str,]:
+    @staticmethod
+    def get_rate_labels() -> tuple[str,]:
         return ("Gaussian",)
-
-    def n_rates(self: Self) -> int:
-        return 1
 
     def get_fit_time(
         self: Self,
@@ -276,13 +275,9 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
         )
         return {"basis": data["basis"], "data": y_fit}
 
-    def get_curve_label(
-        self: Self,
-    ) -> tuple[str, str]:
+    @staticmethod
+    def get_rate_labels() -> tuple[str, str]:
         return ("Fast gaussian", "Slow gaussian")
-
-    def n_rates(self: Self) -> int:
-        return 2
 
     def get_fit_time(
         self: Self,
@@ -356,13 +351,9 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
 
         return {"basis": data["basis"], "data": y_fit}
 
-    def get_curve_label(
-        self: Self,
-    ) -> tuple[str,]:
+    @staticmethod
+    def get_rate_labels() -> tuple[str,]:
         return ("Exponential",)
-
-    def n_rates(self: Self) -> int:
-        return 1
 
     def get_fit_time(
         self: Self,
@@ -451,13 +442,9 @@ class GaussianPlusExponentialMethod(
         )
         return {"basis": data["basis"], "data": y_fit}
 
-    def get_curve_label(
-        self: Self,
-    ) -> tuple[str, str]:
+    @staticmethod
+    def get_rate_labels() -> tuple[str, str]:
         return ("Gaussian", "Exponential")
-
-    def n_rates(self: Self) -> int:
-        return 2
 
     def get_fit_time(
         self: Self,

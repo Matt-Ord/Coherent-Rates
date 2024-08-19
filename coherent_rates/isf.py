@@ -33,12 +33,6 @@ from surface_potential_analysis.state_vector.eigenstate_calculation import (
 from surface_potential_analysis.state_vector.plot import (
     get_periodic_x_operator,
 )
-
-from surface_potential_analysis.state_vector.eigenstate_list import (
-    ValueList,
-)
-from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
-
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
@@ -66,6 +60,7 @@ if TYPE_CHECKING:
     )
     from surface_potential_analysis.state_vector.eigenstate_list import (
         StatisticalValueList,
+        ValueList,
     )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import (
@@ -407,7 +402,7 @@ def _get_ak_data_path(
     )
 
 
-def get_value_list_index(
+def get_value_list_at_idx(
     values: ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]],
     index: int,
 ) -> ValueList[MomentumBasis]:
@@ -418,7 +413,7 @@ def get_value_list_index(
 
 
 @npy_cached_dict(_get_ak_data_path, load_pickle=True)
-def get_ak_data(
+def get_rate_against_momentum_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
@@ -432,26 +427,32 @@ def get_ak_data(
     rates = np.zeros((fit_method.n_rates(), len(nk_points)), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     for i, direction in enumerate(nk_points):
-        free_time = fit_method.get_fit_time(system, config, direction)
-        time = EvenlySpacedTimeBasis(100, 1, 0, free_time) if times is None else times
+        free_times = (
+            EvenlySpacedTimeBasis(
+                100,
+                1,
+                0,
+                fit_method.get_fit_time(system, config, direction),
+            )
+            if times is None
+            else times
+        )
 
         isf = _get_boltzmann_isf_from_hamiltonian(
             hamiltonian,
             config.temperature,
-            time,
+            free_times,
             direction,
             n_repeats=10,
         )
 
-        for j in range(fit_method.n_rates()):
-            rates[j][i] = fit_method.get_rates_from_isf(isf)[j]
+        rates[:, i] = fit_method.get_rates_from_isf(isf)
 
-    rates = rates.reshape(-1)
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
     basis = MomentumBasis(k_points)
     return {
-        "data": rates,
+        "data": rates.ravel(),
         "basis": TupleBasis(FundamentalBasis(fit_method.n_rates()), basis),
     }
 
@@ -546,7 +547,7 @@ def calculate_effective_mass_from_gradient(
 
 
 @dataclass
-class AlphaDeltakFitData:
+class RateAgainstMomentumFitData:
     """_Stores data from linear fit with calculated effective mass."""
 
     gradient: float
@@ -554,25 +555,27 @@ class AlphaDeltakFitData:
     effective_mass: float
 
 
-def get_alpha_deltak_linear_fit(
+def get_rate_against_momentum_linear_fit(
     config: PeriodicSystemConfig,
     values: ValueList[MomentumBasis],
-) -> AlphaDeltakFitData:
+) -> RateAgainstMomentumFitData:
     k_points = values["basis"].k_points
     rates = values["data"]
     gradient, intercept = np.polyfit(k_points, rates, 1)
     effective_mass = calculate_effective_mass_from_gradient(config, gradient)
-    return AlphaDeltakFitData(gradient, intercept, effective_mass)
+    return RateAgainstMomentumFitData(gradient, intercept, effective_mass)
 
 
 @timed
-def get_ak_temp_data(
+def get_rate_against_temperature_and_momentum_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
+    fit_method: FitMethod[Any] | None = None,
     temperatures: list[int] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
-) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+) -> ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]]:
+    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
     temperatures = (
         [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
@@ -581,27 +584,24 @@ def get_ak_temp_data(
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
-    data = np.zeros((len(temperatures), len(nk_points)))
+    data = np.zeros((fit_method.n_rates(), len(temperatures), len(nk_points)))
 
-    for i, direction in enumerate(nk_points):
-        operator = get_periodic_x_operator_sparse(hamiltonian["basis"][0], direction)
+    for j, temperature in enumerate(temperatures):
+        config.temperature = temperature
+        rate_data = get_rate_against_momentum_data(
+            system,
+            config,
+            fit_method=fit_method,
+            nk_points=nk_points,
+        )["data"]
+        rate_data = rate_data.reshape(fit_method.n_rates(), len(nk_points))
+        data[:, j, :] = rate_data
 
-        for j, temperature in enumerate(temperatures):
-            time = 30 * np.sqrt(
-                system.mass / (Boltzmann * temperature * (k_points[i]) ** 2),
-            )
-            times = EvenlySpacedTimeBasis(200, 1, 0, time)
-            isf_data = np.zeros((10, times.n), dtype=np.complex128)
-
-            for k in range(10):
-                state = _get_random_boltzmann_state_from_hamiltonian(
-                    hamiltonian,
-                    temperature,
-                )
-                isf = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
-                isf_data[k, :] = isf["data"]
-            mean = np.mean(isf_data, axis=0, dtype=np.complex128)
-            isf_mean = ValueList(basis=times, data=mean)
-
-            data[j, i] = GaussianPlusExponentialMethod().get_rates_from_isf(isf_mean)[0]
-    return data, k_points
+    basis = MomentumBasis(k_points)
+    return {
+        "data": data.ravel(),
+        "basis": TupleBasis(
+            FundamentalBasis(fit_method.n_rates() * len(temperatures)),
+            basis,
+        ),
+    }

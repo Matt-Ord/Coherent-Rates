@@ -2,8 +2,8 @@ from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBas
 
 from coherent_rates.isf import get_random_boltzmann_state
 from coherent_rates.plot import (
-    plot_alpha_deltak_comparison,
     plot_boltzmann_isf,
+    plot_rate_against_momentum_comparison,
     plot_system_eigenstates_2d,
     plot_system_evolution_2d,
 )
@@ -27,4 +27,4 @@ if __name__ == "__main__":
     isf = plot_boltzmann_isf(system, config, times, direction, n_repeats=10)
 
     nk_points = [(0, 3 * i) for i in range(1, 5)]
-    plot_alpha_deltak_comparison(system, config, nk_points=nk_points)
+    plot_rate_against_momentum_comparison(system, config, nk_points=nk_points)
