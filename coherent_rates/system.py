@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann, electron_volt, hbar
+from scipy.constants import electron_volt  # type: ignore bad types
 from surface_potential_analysis.basis.basis import (
     FundamentalPositionBasis,
     FundamentalTransformedBasis,
@@ -27,10 +27,6 @@ from surface_potential_analysis.basis.stacked_basis import (
 from surface_potential_analysis.basis.time_basis_like import (
     EvenlySpacedTimeBasis,
 )
-from surface_potential_analysis.basis.util import (
-    get_displacements_x,
-    get_twice_average_nx,
-)
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -39,7 +35,6 @@ from surface_potential_analysis.hamiltonian_builder.momentum_basis import (
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_basis,
-    convert_potential_to_position_basis,
 )
 from surface_potential_analysis.stacked_basis.build import (
     fundamental_transformed_stacked_basis_from_shape,
@@ -203,7 +198,7 @@ class PeriodicSystem:
     lattice_constant: float
     mass: float
 
-    def __hash__(self: Self) -> int:  # noqa: D105
+    def __hash__(self: Self) -> int:
         h = hashlib.sha256(usedforsecurity=False)
         h.update(self.id.encode())
         h.update(str(self.barrier_energy).encode())
@@ -212,7 +207,7 @@ class PeriodicSystem:
 
         return int.from_bytes(h.digest(), "big")
 
-    def get_fundamental_potential(  # noqa: D102
+    def get_fundamental_potential(
         self: Self,
     ) -> Potential[
         TupleBasisWithLengthLike[
@@ -221,7 +216,7 @@ class PeriodicSystem:
     ]:
         ...
 
-    def get_potential(  # noqa: D102
+    def get_potential(
         self: Self,
         shape: tuple[int, ...],
         resolution: tuple[int, ...],
@@ -233,11 +228,13 @@ class PeriodicSystem:
 
 
 class FreeSystem(PeriodicSystem):
+    """A free periodic system."""
+
     def __init__(self, other: PeriodicSystem) -> None:  # noqa: ANN101, D107
         self._other = other
         super().__init__(other.id, 0, other.lattice_constant, other.mass)
 
-    def get_fundamental_potential(  # noqa: D102
+    def get_fundamental_potential(
         self: Self,
     ) -> Potential[
         TupleBasisWithLengthLike[
@@ -259,6 +256,8 @@ class PeriodicSystem1d(PeriodicSystem):
 
 
 class PeriodicSystem2d(PeriodicSystem):
+    """Represents the properties of a 2D Periodic System."""
+
     def get_fundamental_potential(
         self: Self,
     ) -> Potential[
@@ -298,7 +297,7 @@ class PeriodicSystemConfig:
             else self.truncation
         )
 
-    def __hash__(self: Self) -> int:  # noqa: D105
+    def __hash__(self: Self) -> int:
         return hash((self.shape, self.resolution, self.n_bands, self.temperature))
 
 
@@ -461,60 +460,3 @@ def get_gaussian_state_1d(
         ),
     )
     return initial_state
-
-
-def get_cl_operator(
-    system: PeriodicSystem1d,
-    config: PeriodicSystemConfig,
-) -> SingleBasisOperator[Any]:
-    """Generate the operator for the stationary Caldeira-Leggett solution.
-
-    Follows the formula from eqn 3.421 in
-    https://doi.org/10.1093/acprof:oso/9780199213900.001.0001
-
-    Args:
-    ----
-        system (PeriodicSystem): _description_
-        config (PeriodicSystemConfig): _description_
-        temperature (float): _description_
-    ccc
-
-    Returns:
-    -------
-        SingleBasisOperator[Any]: _description_
-
-    """
-    potential = system.get_potential(config.shape, config.resolution)
-
-    basis_x = stacked_basis_as_fundamental_position_basis(potential["basis"])
-    converted_potential = convert_potential_to_position_basis(potential)
-
-    displacements = get_displacements_x(basis_x)
-    average_nx = get_twice_average_nx(basis_x)
-
-    n_states = basis_x.n
-
-    # if average_nx // 2 is an integer, this is just V[i]
-    # Otherwise this averages V[floor average_nx // 2] and V[ceil average_nx // 2]
-    floor_idx = np.floor(average_nx[0] / 2).astype(np.int_) % n_states
-    ceil_idx = np.ceil(average_nx[0] / 2).astype(np.int_) % n_states
-    average_potential = (
-        converted_potential["data"][floor_idx] + converted_potential["data"][ceil_idx]
-    ) / 2
-
-    # density matrix in position basis (un-normalized)
-    # \rho_s(x, x') = N \exp(-V(x+x' / 2) / kt - mkt(x-x')^2/ 2hbar^2)
-    matrix = np.exp(
-        -(
-            (average_potential / (Boltzmann * config.temperature))
-            + (
-                (system.mass * Boltzmann * config.temperature * displacements**2)
-                / (2 * hbar**2)
-            )
-        ),
-    )
-
-    return {
-        "basis": TupleBasis(converted_potential["basis"], converted_potential["basis"]),
-        "data": matrix.ravel(),
-    }

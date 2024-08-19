@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann
-from scipy.optimize import curve_fit
+from scipy.constants import Boltzmann  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalTransformedBasis,
@@ -31,6 +30,9 @@ from surface_potential_analysis.operator.operator import (
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
 )
+from surface_potential_analysis.state_vector.eigenstate_list import (
+    ValueList,
+)
 from surface_potential_analysis.state_vector.plot import (
     get_periodic_x_operator,
 )
@@ -38,9 +40,9 @@ from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
 from surface_potential_analysis.util.decorators import npy_cached_dict, timed
-from surface_potential_analysis.util.util import get_measured_data
 from surface_potential_analysis.wavepacket.get_eigenstate import BlochBasis
 
+from coherent_rates.fit import FitMethod, GaussianMethod, GaussianPlusExponentialMethod
 from coherent_rates.scattering_operator import (
     SparseScatteringOperator,
     apply_scattering_operator_to_state,
@@ -352,96 +354,13 @@ def get_band_resolved_boltzmann_isf(
     }
 
 
-@dataclass
-class GaussianFitData:
-    """Represents the parameters from a Gaussian fit."""
-
-    amplitude: float
-    amplitude_error: float
-    width: float
-    width_error: float
-
-
-def fit_abs_isf_to_gaussian(
-    values: ValueList[_BT0],
-) -> GaussianFitData:
-    def gaussian(
-        x: np.ndarray[Any, np.dtype[np.float64]],
-        a: float,
-        b: float,
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
-        return a * np.exp(-1 * np.square(x / b) / 2)
-
-    x_data = BasisUtil(values["basis"]).nx_points
-    y_data = get_measured_data(values["data"], "abs")
-    parameters, covariance = curve_fit(gaussian, x_data, y_data)
-    fit_A = parameters[0]
-    fit_B = parameters[1]
-    dt = values["basis"].times[1]
-
-    return GaussianFitData(
-        fit_A,
-        np.sqrt(covariance[0][0]),
-        fit_B * dt,
-        np.sqrt(covariance[1][1]) * dt,
-    )
-
-
-def fit_abs_isf_to_double_gaussian(
-    values: ValueList[_BT0],
-) -> tuple[GaussianFitData, GaussianFitData]:
-    def double_gaussian(
-        x: np.ndarray[Any, np.dtype[np.float64]],
-        a1: float,
-        b1: float,
-        a2: float,
-        b2: float,
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
-        return a1 * np.exp(-1 * np.square(x / b1) / 2) + a2 * np.exp(
-            -1 * np.square(x / b2) / 2,
-        )
-
-    x_data = BasisUtil(values["basis"]).nx_points
-    y_data = get_measured_data(values["data"], "abs")
-    parameters, covariance = curve_fit(double_gaussian, x_data, y_data)
-    fit_A1 = parameters[0]
-    fit_B1 = parameters[1]
-    fit_A2 = parameters[2]
-    fit_B2 = parameters[3]
-    dt = values["basis"].times[1]
-
-    return (
-        GaussianFitData(
-            fit_A1,
-            np.sqrt(covariance[0][0]),
-            fit_B1 * dt,
-            np.sqrt(covariance[1][1]) * dt,
-        ),
-        GaussianFitData(
-            fit_A2,
-            np.sqrt(covariance[2][2]),
-            fit_B2 * dt,
-            np.sqrt(covariance[3][3]) * dt,
-        ),
-    )
-
-
-def truncate_value_list(
-    values: ValueList[EvenlySpacedTimeBasis[int, int, int]],
-    index: int,
-) -> ValueList[EvenlySpacedTimeBasis[int, int, int]]:
-    data = values["data"][0 : index + 1]
-    new_times = EvenlySpacedTimeBasis(index + 1, 1, 0, values["basis"].times[index])
-    return {"basis": new_times, "data": data}
-
-
 class MomentumBasis(FundamentalBasis[Any]):  # noqa: D101
     def __init__(self, k_points: np.ndarray[Any, np.dtype[np.float64]]) -> None:  # noqa: D107, ANN101
         self._k_points = k_points
         super().__init__(k_points.size)
 
     @property
-    def k_points(self: Self) -> np.ndarray[Any, np.dtype[np.float64]]:  # noqa: D102
+    def k_points(self: Self) -> np.ndarray[Any, np.dtype[np.float64]]:
         return self._k_points
 
 
@@ -454,7 +373,7 @@ def get_free_particle_time(
     basis = system.get_potential(config.shape, config.resolution)["basis"]
     dk_stacked = BasisUtil(basis).dk_stacked
 
-    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))
+    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))  # type: ignore library type
     k = np.linalg.norm(dk_stacked[0]) if k == 0 else k
 
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
@@ -475,61 +394,70 @@ def _get_ak_data_path(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
+    fit_method: FitMethod[Any] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
 ) -> Path:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
-    return Path(f"data/{hash((system, config))}.{hash(nk_points[0])}.npz")
+    return Path(
+        f"data/{hash((system, config))}.{hash(nk_points[0])}.{hash(fit_method)}.npz",
+    )
+
+
+def get_value_list_at_idx(
+    values: ValueList[TupleBasis[_B0, MomentumBasis]],
+    index: int,
+) -> ValueList[MomentumBasis]:
+    basis = values["basis"][1]
+    full_data = values["data"].reshape((values["basis"][0].n, values["basis"][1].n))
+    data = full_data[index, :]
+    return {"basis": basis, "data": data}
 
 
 @npy_cached_dict(_get_ak_data_path, load_pickle=True)
-def get_ak_data(
+def get_rate_against_momentum_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
+    fit_method: FitMethod[Any] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-) -> ValueList[MomentumBasis]:
+) -> ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]]:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
-    free_time = get_free_particle_time(system, config, nk_points[0])
-    times = (
-        EvenlySpacedTimeBasis(
-            100,
-            1,
-            0,
-            4 * free_time,
-        )
-        if times is None
-        else times
-    )
 
-    rates = np.zeros(len(nk_points), dtype=np.complex128)
+    rates = np.zeros((fit_method.n_rates(), len(nk_points)), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     for i, direction in enumerate(nk_points):
+        free_times = (
+            EvenlySpacedTimeBasis(
+                100,
+                1,
+                0,
+                fit_method.get_fit_time(system, config, direction),
+            )
+            if times is None
+            else times
+        )
+
         isf = _get_boltzmann_isf_from_hamiltonian(
             hamiltonian,
             config.temperature,
-            times,
+            free_times,
             direction,
             n_repeats=10,
         )
 
-        is_increasing = np.diff(np.abs(isf["data"])) > 0
-        first_increasing_idx = np.argmax(is_increasing).item()
-        idx = times.n - 1 if first_increasing_idx == 0 else first_increasing_idx
+        rates[:, i] = fit_method.get_rates_from_isf(isf)
 
-        truncated_isf = truncate_value_list(isf, idx)
-        rates[i] = 1 / fit_abs_isf_to_gaussian(truncated_isf).width
-        times = EvenlySpacedTimeBasis(
-            times.n,
-            times.step,
-            times.offset,
-            times.times[idx],
-        )
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
-    return {"data": rates, "basis": basis}
+    return {
+        "data": rates.ravel(),
+        "basis": TupleBasis(FundamentalBasis(fit_method.n_rates()), basis),
+    }
 
 
 def _get_scattered_energy_change(
@@ -586,7 +514,7 @@ def get_thermal_scattered_energy_change_against_k(
         standard_deviation[i] = np.std(data)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
     return {
         "data": energy_change,
@@ -609,7 +537,7 @@ def get_scattered_energy_change_against_k(
         energy_change[i] = _get_scattered_energy_change(hamiltonian, state, k_point)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
     return {"data": energy_change, "basis": basis}
 
@@ -622,7 +550,7 @@ def calculate_effective_mass_from_gradient(
 
 
 @dataclass
-class AlphaDeltakFitData:
+class RateAgainstMomentumFitData:
     """_Stores data from linear fit with calculated effective mass."""
 
     gradient: float
@@ -630,12 +558,64 @@ class AlphaDeltakFitData:
     effective_mass: float
 
 
-def get_alpha_deltak_linear_fit(
+def get_rate_against_momentum_linear_fit(
     config: PeriodicSystemConfig,
     values: ValueList[MomentumBasis],
-) -> AlphaDeltakFitData:
+) -> RateAgainstMomentumFitData:
     k_points = values["basis"].k_points
     rates = values["data"]
     gradient, intercept = np.polyfit(k_points, rates, 1)
     effective_mass = calculate_effective_mass_from_gradient(config, gradient)
-    return AlphaDeltakFitData(gradient, intercept, effective_mass)
+    return RateAgainstMomentumFitData(gradient, intercept, effective_mass)
+
+
+@timed
+def get_rate_against_temperature_and_momentum_data(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    temperatures: list[int] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> ValueList[
+    TupleBasis[TupleBasis[FundamentalBasis[int], FundamentalBasis[int]], MomentumBasis]
+]:
+    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    temperatures = (
+        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
+    )
+
+    n_rates = fit_method.n_rates()
+    n_temperatures = len(temperatures)
+    data = np.zeros(
+        (n_rates, n_temperatures, len(nk_points)),
+        dtype=np.complex128,
+    )
+
+    for j, temperature in enumerate(temperatures):
+        config.temperature = temperature
+        rate_data = get_rate_against_momentum_data(
+            system,
+            config,
+            fit_method=fit_method,
+            nk_points=nk_points,
+        )["data"]
+        rate_data = rate_data.reshape(n_rates, -1)
+        data[:, j, :] = rate_data
+
+    hamiltonian = get_hamiltonian(system, config)
+    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore einsum
+    basis = MomentumBasis(k_points)
+
+    return {
+        "data": data.ravel(),
+        "basis": TupleBasis(
+            TupleBasis(
+                FundamentalBasis(n_rates),
+                FundamentalBasis(n_temperatures),
+            ),
+            basis,
+        ),
+    }

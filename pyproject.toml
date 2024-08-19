@@ -20,7 +20,7 @@ unsafe-fixes = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["D103", "D104", "D100", "D417", "TD003", "TD002"]
+ignore = ["D102", "D103", "D104", "D105", "D100", "D417", "TD003", "TD002"]
 unfixable = ["ERA001", "T201"]
 
 [tool.ruff.lint.extend-per-file-ignores]
