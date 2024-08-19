@@ -154,13 +154,13 @@ class GaussianMethod(FitMethod[GaussianParameters]):
             tuple[list[float], Any],
             curve_fit(
                 gaussian,
-                isf["basis"].times,
+                BasisUtil(isf["basis"]).nx_points,
                 y_data,
                 bounds=([0, -np.inf], [1, np.inf]),
             ),
         )
-
-        return GaussianParameters(parameters[0], np.abs(parameters[1]))
+        dt = isf["basis"].times[1]
+        return GaussianParameters(parameters[0], dt * np.abs(parameters[1]))
 
     @classmethod
     def get_rates_from_fit(
@@ -198,7 +198,9 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
     """Fit the data to a double Gaussian."""
 
     def __hash__(self: Self) -> int:
-        return hash("DoubleGaussianMethod")
+        h = hashlib.sha256(usedforsecurity=False)
+        h.update(b"DoubleGaussianMethod")
+        return int.from_bytes(h.digest(), "big")
 
     @classmethod
     def get_fitted_data(
@@ -240,15 +242,15 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
             tuple[list[float], Any],
             curve_fit(
                 double_gaussian,
-                data["basis"].times,
+                BasisUtil(data["basis"]).nx_points,
                 y_data,
                 bounds=([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf]),
             ),
         )
-
+        dt = data["basis"].times[1]
         return (
-            GaussianParameters(parameters[0], np.abs(parameters[1])),
-            GaussianParameters(parameters[2], np.abs(parameters[3])),
+            GaussianParameters(parameters[0], dt * np.abs(parameters[1])),
+            GaussianParameters(parameters[2], dt * np.abs(parameters[3])),
         )
 
     @classmethod
@@ -286,7 +288,9 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
     """Fit the data to an exponential."""
 
     def __hash__(self: Self) -> int:
-        return hash("ExponentialMethod")
+        h = hashlib.sha256(usedforsecurity=False)
+        h.update(b"ExponentialMethod")
+        return int.from_bytes(h.digest(), "big")
 
     @classmethod
     def get_fitted_data(
@@ -318,13 +322,13 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
             tuple[list[float], Any],
             curve_fit(
                 exponential,
-                data["basis"].times,
+                BasisUtil(data["basis"]).nx_points,
                 y_data,
                 bounds=([0, -np.inf], [1, np.inf]),
             ),
         )
-
-        return ExponentialParameters(parameters[0], parameters[1])
+        dt = data["basis"].times[1]
+        return ExponentialParameters(parameters[0], dt * parameters[1])
 
     @classmethod
     def get_rates_from_fit(
@@ -352,7 +356,9 @@ class GaussianPlusExponentialMethod(
     """Fit the data to a gaussian plus an exponential."""
 
     def __hash__(self: Self) -> int:
-        return hash("GaussianPlusExponentialMethod")
+        h = hashlib.sha256(usedforsecurity=False)
+        h.update(b"GaussianPlusExponentialMethod")
+        return int.from_bytes(h.digest(), "big")
 
     @classmethod
     def get_fitted_data(
@@ -393,15 +399,15 @@ class GaussianPlusExponentialMethod(
             tuple[list[float], Any],
             curve_fit(
                 gaussian_and_exp,
-                data["basis"].times,
+                BasisUtil(data["basis"]).nx_points,
                 y_data,
                 bounds=([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf]),
             ),
         )
-
+        dt = data["basis"].times[1]
         return (
-            GaussianParameters(parameters[0], np.abs(parameters[1])),
-            ExponentialParameters(parameters[2], parameters[3]),
+            GaussianParameters(parameters[0], dt * np.abs(parameters[1])),
+            ExponentialParameters(parameters[2], dt * parameters[3]),
         )
 
     @classmethod

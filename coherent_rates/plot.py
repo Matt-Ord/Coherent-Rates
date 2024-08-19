@@ -81,6 +81,7 @@ from coherent_rates.system import (
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
+    from surface_potential_analysis.basis.basis import FundamentalBasis
     from surface_potential_analysis.basis.basis_like import BasisLike
     from surface_potential_analysis.basis.explicit_basis import (
         ExplicitStackedBasisWithLength,
@@ -88,6 +89,7 @@ if TYPE_CHECKING:
     from surface_potential_analysis.basis.stacked_basis import (
         StackedBasisLike,
         StackedBasisWithVolumeLike,
+        TupleBasis,
     )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
@@ -440,7 +442,7 @@ def _calculate_effective_mass_from_gradient(
     temperature: float,
     gradient: float,
 ) -> float:
-    return np.abs(Boltzmann * temperature / (gradient**2))
+    return Boltzmann * temperature / (gradient**2)
 
 
 @dataclass
@@ -523,8 +525,8 @@ def plot_rate_against_momentum(
             ),
         )
 
-    ax.set_ylim(0, ax.get_ylim()[1])
-    ax.set_xlim(0, ax.get_xlim()[1])
+    ax.set_ylim(0, ax.get_ylim()[1] * 1.2)
+    ax.set_xlim(0, ax.get_xlim()[1] * 1.2)
     ax.legend()  # type: ignore library type
     ax.set_title("Plot of rate against delta k")  # type: ignore library type
 
@@ -691,6 +693,22 @@ def plot_occupation_against_energy_comparison(
     input()
 
 
+def get_effective_masses(
+    data: ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]],
+    temperatures: list[int],
+    *,
+    rate_index: int = 0,
+) -> np.ndarray[Any, Any]:
+    effective_masses = np.zeros(len(temperatures), dtype=np.complex128)
+    for i, temperature in enumerate(temperatures):
+        value = get_value_list_at_idx(data, rate_index + i)
+        effective_masses[i] = _calculate_effective_mass_from_gradient(
+            temperature,
+            _get_rate_against_momentum_linear_fit(value).gradient,
+        )
+    return effective_masses
+
+
 def plot_rate_against_temperature_and_momentum_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
@@ -713,20 +731,15 @@ def plot_rate_against_temperature_and_momentum_data(
     for j in range(fit_method.n_rates()):
         fig, ax = get_figure(None)
 
-        effective_masses = np.zeros(len(temperatures), dtype=np.complex128)
-
         for i, temperature in enumerate(temperatures):
             value = get_value_list_at_idx(data, j + i)
             fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
             line.set_label(f"T={temperature}K")
-            effective_masses[i] = _calculate_effective_mass_from_gradient(
-                temperature,
-                _get_rate_against_momentum_linear_fit(value).gradient,
-            )
         ax.legend()  # type: ignore unknown
         ax.set_title(f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum")  # type: ignore unknown
         fig.show()
 
+        effective_masses = get_effective_masses(data, temperatures, rate_index=j)
         fig, ax, line = plot_data_1d(effective_masses, np.asarray(temperatures))
         ax.set_xlabel("Temperature/K")  # type: ignore unknown
         ax.set_ylabel("Effective mass/kg")  # type: ignore unknown
