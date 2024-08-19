@@ -459,16 +459,14 @@ def _plot_alpha_deltak(
     *,
     ax: Axes | None = None,
 ) -> tuple[Figure, Axes, Line2D]:
-    k_points = data["basis"].k_points
-
-    fig, ax = get_figure(ax)
-
-    (line,) = ax.plot(k_points, data["data"])
+    fig, ax, line = plot_value_list_against_momentum(data, ax=ax)
     line.set_linestyle("")
     line.set_marker("x")
 
     fit = _get_alpha_deltak_linear_fit(data)
-    x_fit = np.array([0, k_points[len(k_points) - 1] * 1.2], dtype=np.float64)
+
+    k_points = data["basis"].k_points
+    x_fit = np.array([0, k_points[-1] * 1.2])
     y_fit = fit.gradient * x_fit + fit.intercept
     (fit_line,) = ax.plot(x_fit, y_fit)
     fit_line.set_color(line.get_color())

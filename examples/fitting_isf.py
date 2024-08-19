@@ -1,10 +1,20 @@
+from typing import Any, TypeVar
+
 import numpy as np
-from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
+from surface_potential_analysis.basis.time_basis_like import (
+    BasisWithTimeLike,
+    EvenlySpacedTimeBasis,
+)
 from surface_potential_analysis.basis.util import BasisUtil
+from surface_potential_analysis.state_vector.eigenstate_list import ValueList
+from surface_potential_analysis.state_vector.plot_value_list import (
+    plot_value_list_against_time,
+)
 
 from coherent_rates.fit import (
     DoubleGaussianMethod,
     ExponentialMethod,
+    FitMethod,
     GaussianMethod,
     GaussianPlusExponentialMethod,
 )
@@ -15,6 +25,27 @@ from coherent_rates.system import (
     SODIUM_COPPER_SYSTEM_2D,
     PeriodicSystemConfig,
 )
+
+_BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
+
+
+def plot_isf_with_fit(
+    data: ValueList[_BT0],
+    method: FitMethod[Any],
+) -> None:
+    fig, ax, line = plot_value_list_against_time(data)
+    line.set_label("ISF")
+
+    fit = method.get_fit_from_isf(data)
+    fitted_data = method.get_fitted_data(fit, data["basis"])
+
+    fig, ax, line = plot_value_list_against_time(fitted_data, ax=ax)
+    line.set_label("Fit")
+
+    ax.legend()
+    fig.show()
+    input()
+
 
 if __name__ == "__main__":
     config = PeriodicSystemConfig((10, 1), (15, 15), 225, temperature=60)
@@ -30,29 +61,29 @@ if __name__ == "__main__":
     isf = get_boltzmann_isf(system, config, times, direction, n_repeats=20)
 
     # Exponential fitting
-    exp = ExponentialMethod().fit_isf_data(isf)
+    exp = ExponentialMethod().get_fit_from_isf(isf)
     print(exp)
     print(k_length)
-    print(ExponentialMethod().get_rates_from_fit(exp))
-    ExponentialMethod().plot_isf_with_fit(isf)
+    print(ExponentialMethod.get_rates_from_fit(exp))
+    plot_isf_with_fit(isf, ExponentialMethod())
 
     # Gaussian fitting
-    gauss = GaussianMethod().fit_isf_data(isf)
+    gauss = GaussianMethod().get_fit_from_isf(isf)
     print(gauss)
     print(k_length)
-    print(GaussianMethod().get_rates_from_fit(gauss))
-    GaussianMethod().plot_isf_with_fit(isf)
+    print(GaussianMethod.get_rates_from_fit(gauss))
+    plot_isf_with_fit(isf, GaussianMethod())
 
     # Guassian + Exponential fitting
-    gauss, exp = GaussianPlusExponentialMethod().fit_isf_data(isf)
+    gauss, exp = GaussianPlusExponentialMethod().get_fit_from_isf(isf)
     print(gauss, exp)
     print(k_length)
-    print(GaussianPlusExponentialMethod().get_rates_from_fit((gauss, exp)))
-    GaussianPlusExponentialMethod().plot_isf_with_fit(isf)
+    print(GaussianPlusExponentialMethod.get_rates_from_fit((gauss, exp)))
+    plot_isf_with_fit(isf, GaussianPlusExponentialMethod())
 
     # Double Gaussian fitting
-    gauss1, gauss2 = DoubleGaussianMethod().fit_isf_data(isf)
+    gauss1, gauss2 = DoubleGaussianMethod().get_fit_from_isf(isf)
     print(gauss1, gauss2)
     print(k_length)
-    print(DoubleGaussianMethod().get_rates_from_fit((gauss1, gauss2)))
-    DoubleGaussianMethod().plot_isf_with_fit(isf)
+    print(DoubleGaussianMethod.get_rates_from_fit((gauss1, gauss2)))
+    plot_isf_with_fit(isf, DoubleGaussianMethod())
