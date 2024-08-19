@@ -33,13 +33,6 @@ class FitMethod(ABC, Generic[T]):
     def __hash__(self: Self) -> int:
         ...
 
-    @abstractmethod
-    def get_fit_from_isf(
-        self: Self,
-        data: ValueList[_BT0],
-    ) -> T:
-        ...
-
     @classmethod
     @abstractmethod
     def get_rates_from_fit(
@@ -48,37 +41,38 @@ class FitMethod(ABC, Generic[T]):
     ) -> tuple[float, ...]:
         ...
 
-    def get_rates_from_isf(
-        self: Self,
-        data: ValueList[_BT0],
-    ) -> tuple[float, ...]:
-        fit = self.get_fit_from_isf(data)
-        return self.get_rates_from_fit(fit)
-
-    @classmethod
-    def get_function_for_fit(
-        cls: type[Self],
-        fit: T,
-    ) -> Callable[[_BT0], ValueList[_BT0]]:
-        return functools.partial(cls.get_fitted_data, fit)
-
-    @classmethod
+    @staticmethod
     @abstractmethod
-    def get_fitted_data(
-        cls: type[Self],
+    def _fit_fn(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        *params: *tuple[float, ...],
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def _params_from_fit(
         fit: T,
-        basis: _BT0,
-    ) -> ValueList[_BT0]:
+    ) -> tuple[float, ...]:
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def _fit_from_params(
+        dt: float,
+        *params: *tuple[float, ...],
+    ) -> T:
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def _fit_param_bounds() -> tuple[list[float], list[float]]:
         ...
 
     @staticmethod
     @abstractmethod
     def get_rate_labels() -> tuple[str, ...]:
         ...
-
-    @classmethod
-    def n_rates(cls: type[Self]) -> int:
-        return len(cls.get_rate_labels())
 
     @abstractmethod
     def get_fit_time(
@@ -88,6 +82,51 @@ class FitMethod(ABC, Generic[T]):
         direction: tuple[int, ...] | None = None,
     ) -> float:
         ...
+
+    def get_fit_from_isf(
+        self: Self,
+        data: ValueList[_BT0],
+    ) -> T:
+        y_data = get_measured_data(data["data"], measure="abs")
+        dt = np.max(data["basis"].times) / data["basis"].times.size
+        parameters, _covariance = cast(
+            tuple[list[float], Any],
+            curve_fit(
+                self._fit_fn,
+                data["basis"].times / dt,
+                y_data,
+                bounds=self._fit_param_bounds(),
+            ),
+        )
+
+        return self._fit_from_params(dt, *parameters)
+
+    def get_rates_from_isf(
+        self: Self,
+        data: ValueList[_BT0],
+    ) -> tuple[float, ...]:
+        fit = self.get_fit_from_isf(data)
+        return self.get_rates_from_fit(fit)
+
+    @classmethod
+    def get_fitted_data(
+        cls: type[Self],
+        fit: T,
+        basis: _BT0,
+    ) -> ValueList[_BT0]:
+        data = cls._fit_fn(basis.times, *cls._params_from_fit(fit))
+        return {"basis": basis, "data": data}
+
+    @classmethod
+    def get_function_for_fit(
+        cls: type[Self],
+        fit: T,
+    ) -> Callable[[_BT0], ValueList[_BT0]]:
+        return functools.partial(cls.get_fitted_data, fit)
+
+    @classmethod
+    def n_rates(cls: type[Self]) -> int:
+        return len(cls.get_rate_labels())
 
 
 def _truncate_value_list(
@@ -130,37 +169,42 @@ class GaussianMethod(FitMethod[GaussianParameters]):
         h.update(b"GaussianMethod")
         return int.from_bytes(h.digest(), "big")
 
+    @staticmethod
+    def _fit_fn(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        *params: *tuple[float, ...],
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+        a, b = params
+        return (1 - a) + a * np.exp(-1 * np.square(x / b) / 2).astype(np.complex128)
+
+    @staticmethod
+    def _params_from_fit(
+        fit: GaussianParameters,
+    ) -> tuple[float, float]:
+        return (fit.amplitude, fit.width)
+
+    @staticmethod
+    def _fit_from_params(
+        dt: float,
+        *params: *tuple[float, ...],
+    ) -> GaussianParameters:
+        return GaussianParameters(params[0], dt * np.abs(params[1]))
+
+    @staticmethod
+    def _fit_param_bounds() -> tuple[list[float], list[float]]:
+        return ([0, -np.inf], [1, np.inf])
+
     def get_fit_from_isf(
         self: Self,
         data: ValueList[_BT0],
     ) -> GaussianParameters:
-        # truncate value list
-
+        # Stop trying to fit past the first non-decreasing ISF
         is_increasing = np.diff(np.abs(data["data"])) > 0
         first_increasing_idx = np.argmax(is_increasing).item()
         idx = data["basis"].n - 1 if first_increasing_idx == 0 else first_increasing_idx
-        isf = _truncate_value_list(data, idx)
+        truncated = _truncate_value_list(data, idx)
 
-        # Gaussian fitting
-        def gaussian(
-            x: np.ndarray[Any, np.dtype[np.float64]],
-            a: float,
-            b: float,
-        ) -> np.ndarray[Any, np.dtype[np.float64]]:
-            return (1 - a) + a * np.exp(-1 * np.square(x / b) / 2)
-
-        y_data = get_measured_data(isf["data"], measure="abs")
-        parameters, _covariance = cast(
-            tuple[list[float], Any],
-            curve_fit(
-                gaussian,
-                BasisUtil(isf["basis"]).nx_points,
-                y_data,
-                bounds=([0, -np.inf], [1, np.inf]),
-            ),
-        )
-        dt = isf["basis"].times[1]
-        return GaussianParameters(parameters[0], dt * np.abs(parameters[1]))
+        return super().get_fit_from_isf(truncated)
 
     @classmethod
     def get_rates_from_fit(
@@ -168,18 +212,6 @@ class GaussianMethod(FitMethod[GaussianParameters]):
         fit: GaussianParameters,
     ) -> tuple[float,]:
         return (1 / fit.width,)
-
-    @classmethod
-    def get_fitted_data(
-        cls: type[Self],
-        fit: GaussianParameters,
-        basis: _BT0,
-    ) -> ValueList[_BT0]:
-        gaussian = fit
-        y_fit = (1 - gaussian.amplitude) + gaussian.amplitude * np.exp(
-            -1 * np.square(basis.times / gaussian.width) / 2,
-        )
-        return {"basis": basis, "data": y_fit.astype(np.complex128)}
 
     @staticmethod
     def get_rate_labels() -> tuple[str]:
@@ -202,56 +234,38 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
         h.update(b"DoubleGaussianMethod")
         return int.from_bytes(h.digest(), "big")
 
-    @classmethod
-    def get_fitted_data(
-        cls: type[Self],
-        fit: tuple[GaussianParameters, GaussianParameters],
-        basis: _BT0,
-    ) -> ValueList[_BT0]:
-        gaussian1, gaussian2 = fit
-        y_fit = (
-            (1 - gaussian1.amplitude - gaussian2.amplitude)
-            + gaussian1.amplitude
-            * np.exp(-1 * np.square(basis.times / gaussian1.width) / 2)
-            + gaussian2.amplitude
-            * np.exp(-1 * np.square(basis.times / gaussian2.width) / 2)
-        )
-        return {"basis": basis, "data": y_fit.astype(np.complex128)}
-
-    def get_fit_from_isf(
-        self: Self,
-        data: ValueList[_BT0],
-    ) -> tuple[GaussianParameters, GaussianParameters]:
-        # Double gaussian fitting
-        def double_gaussian(
-            x: np.ndarray[Any, np.dtype[np.float64]],
-            a: float,
-            b: float,
-            c: float,
-            d: float,
-        ) -> np.ndarray[Any, np.dtype[np.float64]]:
-            return (
-                (1 - a - c)
-                + a * np.exp(-1 * np.square(x / b) / 2)
-                + c * np.exp(-1 * np.square(x / d) / 2)
-                - 1000 * max(a + c - 1, 0)
-            )
-
-        y_data = get_measured_data(data["data"], measure="abs")
-        parameters, _covariance = cast(
-            tuple[list[float], Any],
-            curve_fit(
-                double_gaussian,
-                BasisUtil(data["basis"]).nx_points,
-                y_data,
-                bounds=([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf]),
-            ),
-        )
-        dt = data["basis"].times[1]
+    @staticmethod
+    def _fit_fn(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        *params: *tuple[float, ...],
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+        a, b, c, d = params
         return (
-            GaussianParameters(parameters[0], dt * np.abs(parameters[1])),
-            GaussianParameters(parameters[2], dt * np.abs(parameters[3])),
+            (1 - a - c)
+            + a * np.exp(-1 * np.square(x / b) / 2)
+            + c * np.exp(-1 * np.square(x / d) / 2)
+            - 1000 * max(a + c - 1, 0)
+        ).astype(np.complex128)
+
+    @staticmethod
+    def _params_from_fit(
+        fit: tuple[GaussianParameters, GaussianParameters],
+    ) -> tuple[float, float, float, float]:
+        return (fit[0].amplitude, fit[0].width, fit[1].amplitude, fit[1].width)
+
+    @staticmethod
+    def _fit_from_params(
+        dt: float,
+        *params: *tuple[float, ...],
+    ) -> tuple[GaussianParameters, GaussianParameters]:
+        return (
+            GaussianParameters(params[0], dt * np.abs(params[1])),
+            GaussianParameters(params[2], dt * np.abs(params[3])),
         )
+
+    @staticmethod
+    def _fit_param_bounds() -> tuple[list[float], list[float]]:
+        return ([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf])
 
     @classmethod
     def get_rates_from_fit(
@@ -292,43 +306,30 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
         h.update(b"ExponentialMethod")
         return int.from_bytes(h.digest(), "big")
 
-    @classmethod
-    def get_fitted_data(
-        cls: type[Self],
+    @staticmethod
+    def _fit_fn(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        *params: *tuple[float, ...],
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+        a, b = params
+        return (1 - a) + a * np.exp(-1 * x / b).astype(np.complex128)
+
+    @staticmethod
+    def _params_from_fit(
         fit: ExponentialParameters,
-        basis: _BT0,
-    ) -> ValueList[_BT0]:
-        times = basis.times
-        exponential = fit
-        y_fit = (1 - exponential.amplitude) + exponential.amplitude * np.exp(
-            -1 * times / exponential.time_constant,
-        )
-        return {"basis": basis, "data": y_fit.astype(np.complex128)}
+    ) -> tuple[float, float]:
+        return (fit.amplitude, fit.time_constant)
 
-    def get_fit_from_isf(
-        self: Self,
-        data: ValueList[_BT0],
+    @staticmethod
+    def _fit_from_params(
+        dt: float,
+        *params: *tuple[float, ...],
     ) -> ExponentialParameters:
-        # Exponential fitting
-        def exponential(
-            x: np.ndarray[Any, np.dtype[np.float64]],
-            a: float,
-            b: float,
-        ) -> np.ndarray[Any, np.dtype[np.float64]]:
-            return (1 - a) + a * np.exp(-1 * x / b)
+        return ExponentialParameters(params[0], dt * params[1])
 
-        y_data = get_measured_data(data["data"], measure="abs")
-        parameters, _covariance = cast(
-            tuple[list[float], Any],
-            curve_fit(
-                exponential,
-                BasisUtil(data["basis"]).nx_points,
-                y_data,
-                bounds=([0, -np.inf], [1, np.inf]),
-            ),
-        )
-        dt = data["basis"].times[1]
-        return ExponentialParameters(parameters[0], dt * parameters[1])
+    @staticmethod
+    def _fit_param_bounds() -> tuple[list[float], list[float]]:
+        return ([0, -np.inf], [1, np.inf])
 
     @classmethod
     def get_rates_from_fit(
@@ -360,55 +361,38 @@ class GaussianPlusExponentialMethod(
         h.update(b"GaussianPlusExponentialMethod")
         return int.from_bytes(h.digest(), "big")
 
-    @classmethod
-    def get_fitted_data(
-        cls: type[Self],
-        fit: tuple[GaussianParameters, ExponentialParameters],
-        basis: _BT0,
-    ) -> ValueList[_BT0]:
-        times = basis.times
-        gaussian, exponential = fit
-        y_fit = (
-            (1 - gaussian.amplitude - exponential.amplitude)
-            + gaussian.amplitude * np.exp(-1 * np.square(times / gaussian.width) / 2)
-            + exponential.amplitude * np.exp(-1 * times / exponential.time_constant)
-        )
-        return {"basis": basis, "data": y_fit.astype(np.complex128)}
-
-    def get_fit_from_isf(
-        self: Self,
-        data: ValueList[_BT0],
-    ) -> tuple[GaussianParameters, ExponentialParameters]:
-        # Gaussian with exponential fitting
-        def gaussian_and_exp(
-            x: np.ndarray[Any, np.dtype[np.float64]],
-            a: float,
-            b: float,
-            c: float,
-            d: float,
-        ) -> np.ndarray[Any, np.dtype[np.float64]]:
-            return (
-                (1 - a - c)
-                + a * np.exp(-1 * np.square(x / b) / 2)
-                + c * np.exp(-1 * x / d)
-                - 1000 * max(a + c - 1, 0)
-            )
-
-        y_data = get_measured_data(data["data"], measure="abs")
-        parameters, _covariance = cast(
-            tuple[list[float], Any],
-            curve_fit(
-                gaussian_and_exp,
-                BasisUtil(data["basis"]).nx_points,
-                y_data,
-                bounds=([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf]),
-            ),
-        )
-        dt = data["basis"].times[1]
+    @staticmethod
+    def _fit_fn(
+        x: np.ndarray[Any, np.dtype[np.float64]],
+        *params: *tuple[float, ...],
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
+        a, b, c, d = params
         return (
-            GaussianParameters(parameters[0], dt * np.abs(parameters[1])),
-            ExponentialParameters(parameters[2], dt * parameters[3]),
+            (1 - a - c)
+            + a * np.exp(-1 * np.square(x / b) / 2)
+            + c * np.exp(-1 * x / d)
+            - 1000 * max(a + c - 1, 0)
+        ).astype(np.complex128)
+
+    @staticmethod
+    def _params_from_fit(
+        fit: tuple[GaussianParameters, ExponentialParameters],
+    ) -> tuple[float, float, float, float]:
+        return (fit[0].amplitude, fit[0].width, fit[1].amplitude, fit[1].time_constant)
+
+    @staticmethod
+    def _fit_from_params(
+        dt: float,
+        *params: *tuple[float, ...],
+    ) -> tuple[GaussianParameters, ExponentialParameters]:
+        return (
+            GaussianParameters(params[0], dt * np.abs(params[1])),
+            ExponentialParameters(params[2], dt * params[3]),
         )
+
+    @staticmethod
+    def _fit_param_bounds() -> tuple[list[float], list[float]]:
+        return ([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf])
 
     @classmethod
     def get_rates_from_fit(
@@ -416,19 +400,6 @@ class GaussianPlusExponentialMethod(
         fit: tuple[GaussianParameters, ExponentialParameters],
     ) -> tuple[float, float]:
         return (1 / fit[0].width, 1 / fit[1].time_constant)
-
-    def get_fit_curve(
-        self: Self,
-        data: ValueList[_BT0],
-    ) -> ValueList[_BT0]:
-        times = data["basis"].times
-        gaussian, exponential = self.get_fit_from_isf(data)
-        y_fit = (
-            (1 - gaussian.amplitude - exponential.amplitude)
-            + gaussian.amplitude * np.exp(-1 * np.square(times / gaussian.width) / 2)
-            + exponential.amplitude * np.exp(-1 * times / exponential.time_constant)
-        )
-        return {"basis": data["basis"], "data": y_fit.astype(np.complex128)}
 
     @staticmethod
     def get_rate_labels() -> tuple[str, str]:
