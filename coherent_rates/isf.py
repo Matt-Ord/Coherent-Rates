@@ -314,30 +314,23 @@ def get_coherent_thermal_state(
     util = BasisUtil(basis)
 
     # position probabilities
-    xprob = np.abs(np.exp(-potential["data"] / (config.temperature * Boltzmann)))
-    xprob_norm = np.divide(xprob, np.sum(xprob))
-    x_index = np.random.choice(util.nx_points, p=xprob_norm)
+    x_probability = np.abs(
+        np.exp(-potential["data"] / (config.temperature * Boltzmann)),
+    )
+    x_probability_normalized = np.divide(x_probability, np.sum(x_probability))
+    x_index = np.random.choice(util.nx_points, p=x_probability_normalized)
     x0 = util.get_stacked_index(x_index)
 
     # momentum probabilities
-    # nk[i,j] stores the ith component displacement jth point from 0
-    tuple(
-        (n_k_points[0] - n_k_points[:] + n // 2) % n - (n // 2)
-        for (n_k_points, n) in zip(
-            util.fundamental_stacked_nk_points,
-            util.fundamental_shape,
-            strict=True,
-        )
-    )
-    kdistance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
-    kprob = np.abs(
+    k_distance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
+    k_probability = np.abs(
         np.exp(
-            -np.square(hbar * kdistance)
+            -np.square(hbar * k_distance)
             / (2 * system.mass * config.temperature * Boltzmann),
         ),
     )
-    kprob_norm = np.divide(kprob, np.sum(kprob))
-    k_index = np.random.choice(util.nx_points, p=kprob_norm)
+    k_probability_normalized = np.divide(k_probability, np.sum(k_probability))
+    k_index = np.random.choice(util.nx_points, p=k_probability_normalized)
     k0 = util.get_stacked_index(k_index)
 
     return get_coherent_state(basis, x0, k0, sigma_0)
