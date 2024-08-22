@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann  # type: ignore library type
+from scipy.constants import Boltzmann, hbar  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalTransformedBasis,
@@ -26,6 +26,9 @@ from surface_potential_analysis.dynamics.schrodinger.solve import (
 from surface_potential_analysis.operator.operator import (
     SingleBasisDiagonalOperator,
     apply_operator_to_state,
+)
+from surface_potential_analysis.potential.conversion import (
+    convert_potential_to_position_basis,
 )
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
@@ -49,7 +52,7 @@ from coherent_rates.scattering_operator import (
     apply_scattering_operator_to_states,
     get_periodic_x_operator_sparse,
 )
-from coherent_rates.system import get_hamiltonian
+from coherent_rates.system import get_coherent_state, get_hamiltonian
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -298,6 +301,48 @@ def _get_boltzmann_isf_from_hamiltonian(
     }
 
 
+def get_coherent_thermal_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    sigma_0: float,
+) -> StateVector[Any]:
+    # generates a Gaussian state with x0,k0 given approximately by a thermal distribution
+    potential = convert_potential_to_position_basis(
+        system.get_potential(config.shape, config.resolution),
+    )
+    basis = potential["basis"]
+    util = BasisUtil(basis)
+
+    # position probabilities
+    xprob = np.abs(np.exp(-potential["data"] / (config.temperature * Boltzmann)))
+    xprob_norm = np.divide(xprob, np.sum(xprob))
+    x_index = np.random.choice(util.nx_points, p=xprob_norm)
+    x0 = util.get_stacked_index(x_index)
+
+    # momentum probabilities
+    # nk[i,j] stores the ith component displacement jth point from 0
+    tuple(
+        (n_k_points[0] - n_k_points[:] + n // 2) % n - (n // 2)
+        for (n_k_points, n) in zip(
+            util.fundamental_stacked_nk_points,
+            util.fundamental_shape,
+            strict=True,
+        )
+    )
+    kdistance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
+    kprob = np.abs(
+        np.exp(
+            -np.square(hbar * kdistance)
+            / (2 * system.mass * config.temperature * Boltzmann),
+        ),
+    )
+    kprob_norm = np.divide(kprob, np.sum(kprob))
+    k_index = np.random.choice(util.nx_points, p=kprob_norm)
+    k0 = util.get_stacked_index(k_index)
+
+    return get_coherent_state(basis, x0, k0, sigma_0)
+
+
 @timed
 def get_boltzmann_isf(
     system: PeriodicSystem,
@@ -390,7 +435,7 @@ def _get_default_nk_points(config: PeriodicSystemConfig) -> list[tuple[int, ...]
     )
 
 
-def _get_ak_data_path(
+def _get_rate_against_momentum_data_path(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
@@ -400,6 +445,7 @@ def _get_ak_data_path(
 ) -> Path:
     fit_method = GaussianMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    print(f"data/{hash((system, config))}.{hash(nk_points[0])}.{hash(fit_method)}.npz")
     return Path(
         f"data/{hash((system, config))}.{hash(nk_points[0])}.{hash(fit_method)}.npz",
     )
@@ -415,7 +461,7 @@ def get_value_list_at_idx(
     return {"basis": basis, "data": data}
 
 
-@npy_cached_dict(_get_ak_data_path, load_pickle=True)
+@npy_cached_dict(_get_rate_against_momentum_data_path, load_pickle=True)
 def get_rate_against_momentum_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
@@ -555,18 +601,15 @@ class RateAgainstMomentumFitData:
 
     gradient: float
     intercept: float
-    effective_mass: float
 
 
 def get_rate_against_momentum_linear_fit(
-    config: PeriodicSystemConfig,
     values: ValueList[MomentumBasis],
 ) -> RateAgainstMomentumFitData:
     k_points = values["basis"].k_points
     rates = values["data"]
     gradient, intercept = np.polyfit(k_points, rates, 1)
-    effective_mass = calculate_effective_mass_from_gradient(config, gradient)
-    return RateAgainstMomentumFitData(gradient, intercept, effective_mass)
+    return RateAgainstMomentumFitData(gradient, intercept)
 
 
 @timed
