@@ -445,7 +445,6 @@ def _get_rate_against_momentum_data_path(
 ) -> Path:
     fit_method = GaussianMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
-    print(f"data/{hash((system, config))}.{hash(nk_points[0])}.{hash(fit_method)}.npz")
     return Path(
         f"data/{hash((system, config))}.{hash(nk_points[0])}.{hash(fit_method)}.npz",
     )

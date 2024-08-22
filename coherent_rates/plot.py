@@ -62,6 +62,7 @@ from coherent_rates.isf import (
     get_isf_pair_states,
     get_random_boltzmann_state,
     get_rate_against_momentum_data,
+    get_rate_against_momentum_linear_fit,
     get_rate_against_temperature_and_momentum_data,
     get_scattered_energy_change_against_k,
     get_thermal_scattered_energy_change_against_k,
@@ -479,7 +480,7 @@ def _plot_rate_against_momentum(
     line.set_linestyle("")
     line.set_marker("x")
 
-    fit = _get_rate_against_momentum_linear_fit(data)
+    fit = get_rate_against_momentum_linear_fit(data)
 
     k_points = data["basis"].k_points
     x_fit = np.array([0, k_points[-1] * 1.2])
@@ -520,12 +521,12 @@ def plot_rate_against_momentum(
             f"Mass, {fit_method.get_rate_labels()[i]} =",
             _calculate_effective_mass_from_gradient(
                 config.temperature,
-                _get_rate_against_momentum_linear_fit(list_data).gradient,
+                get_rate_against_momentum_linear_fit(list_data).gradient,
             ),
         )
 
-    ax.set_ylim(0, ax.get_ylim()[1] * 1.2)
-    ax.set_xlim(0, ax.get_xlim()[1] * 1.2)
+    ax.set_ylim(0, ax.get_ylim()[1])
+    ax.set_xlim(0, ax.get_xlim()[1])
     ax.legend()  # type: ignore library type
     ax.set_title("Plot of rate against delta k")  # type: ignore library type
 
@@ -746,5 +747,6 @@ def plot_rate_against_temperature_and_momentum_data(
             "Plot of Effective mass against temperature for"
             f" {fit_method.get_rate_labels()[j]} rate",
         )
+        ax.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
         fig.show()
     input()

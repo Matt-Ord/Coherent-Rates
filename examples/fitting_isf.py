@@ -50,7 +50,6 @@ def plot_isf_with_fit(
     return (fig, ax)
 
 
-print(GaussianMethod.__repr__(GaussianMethod()))
 if __name__ == "__main__":
     config = PeriodicSystemConfig((10, 1), (15, 15), 225, temperature=60)
     system = SODIUM_COPPER_SYSTEM_2D
