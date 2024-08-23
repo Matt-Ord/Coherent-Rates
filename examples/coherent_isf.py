@@ -19,61 +19,66 @@ if __name__ == "__main__":
     system = FreeSystem(system)
     times = EvenlySpacedTimeBasis(151, 1, -75, 5e-11)
 
-    n_repeats = 500
     direction = (2,)
 
-    isf = get_coherent_isf(
+    # Plot the ISF for a set of random coherent states
+    n_repeats = 500
+    coherent_isf = get_coherent_isf(
         system,
         config,
         times,
         direction=direction,
         n_repeats=n_repeats,
     )
-    fig, ax, line = plot_value_list_against_time(isf)
+    fig, ax, line = plot_value_list_against_time(coherent_isf)
     line.set_label("abs")
 
-    fig, ax, line = plot_value_list_against_time(isf, measure="real", ax=ax)
+    fig, ax, line = plot_value_list_against_time(coherent_isf, measure="real", ax=ax)
     line.set_label("real")
 
-    fig, ax, line = plot_value_list_against_time(isf, measure="imag", ax=ax)
+    fig, ax, line = plot_value_list_against_time(coherent_isf, measure="imag", ax=ax)
     line.set_label("imag")
     ax.legend()
     ax.set_title("Coherent state isf")
     fig.show()
 
-    fig, ax, line = plot_value_list_against_time(isf)
+    # Compare 500 samples to 50 samples
+    isf_large = coherent_isf
+    fig, ax, line = plot_value_list_against_time(isf_large)
     line.set_label(f"{n_repeats} runs")
 
     n_repeats = 50
-    isf1 = get_coherent_isf(
+    isf_small = get_coherent_isf(
         system,
         config,
         times,
         direction=direction,
         n_repeats=n_repeats,
     )
-    fig, ax, line = plot_value_list_against_time(isf1, ax=ax)
+    fig, ax, line = plot_value_list_against_time(isf_small, ax=ax)
     line.set_label(f"{n_repeats} runs")
     ax.legend()
-    ax.set_title("Coherent state isf")
+    ax.set_title("Comparison of coherent ISF with a range of sample sizes")
     fig.show()
 
-    bisf = get_boltzmann_isf(system, config, times, direction, n_repeats=50)
-    fig, ax, line = plot_value_list_against_time(bisf)
+    # Plot the ISF for a set of random boltzmann states
+    boltzmann_isf = get_boltzmann_isf(system, config, times, direction, n_repeats=50)
+    fig, ax, line = plot_value_list_against_time(boltzmann_isf)
     line.set_label("abs")
 
-    fig, ax, line = plot_value_list_against_time(bisf, measure="real", ax=ax)
+    fig, ax, line = plot_value_list_against_time(boltzmann_isf, measure="real", ax=ax)
     line.set_label("real")
 
-    fig, ax, line = plot_value_list_against_time(bisf, measure="imag", ax=ax)
+    fig, ax, line = plot_value_list_against_time(boltzmann_isf, measure="imag", ax=ax)
     line.set_label("imag")
     ax.legend()
     ax.set_title("Boltzmann state isf")
     fig.show()
 
-    fig, ax, line = plot_value_list_against_time(isf, measure="real")
+    # Compare the boltzmann and coherent states
+    fig, ax, line = plot_value_list_against_time(coherent_isf, measure="real")
     line.set_label("coherent")
-    fig, ax, line = plot_value_list_against_time(bisf, ax=ax, measure="real")
+    fig, ax, line = plot_value_list_against_time(boltzmann_isf, ax=ax, measure="real")
     line.set_label("boltzmann")
     ax.legend()
     ax.set_title("isf comparison")
