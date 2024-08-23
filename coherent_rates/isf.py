@@ -5,15 +5,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann, hbar  # type: ignore library type
+from scipy.constants import Boltzmann  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
+    FundamentalPositionBasis,
     FundamentalTransformedBasis,
 )
 from surface_potential_analysis.basis.basis_like import BasisLike
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
     TupleBasis,
+    TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import (
     BasisWithTimeLike,
@@ -52,7 +54,12 @@ from coherent_rates.scattering_operator import (
     apply_scattering_operator_to_states,
     get_periodic_x_operator_sparse,
 )
-from coherent_rates.system import get_coherent_state, get_hamiltonian
+from coherent_rates.system import (
+    get_coherent_state,
+    get_hamiltonian,
+    get_thermal_occupation_k,
+    get_thermal_occupation_x,
+)
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -301,12 +308,26 @@ def _get_boltzmann_isf_from_hamiltonian(
     }
 
 
-def get_coherent_thermal_state(
+def get_random_coherent_state(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     sigma_0: float,
-) -> StateVector[Any]:
-    # generates a Gaussian state with x0,k0 given approximately by a thermal distribution
+) -> StateVector[
+    TupleBasisWithLengthLike[*tuple[FundamentalPositionBasis[Any, Any], ...]]
+]:
+    """Generate a Gaussian state with x0,k0 given approximately by a thermal distribution.
+
+    Args:
+    ----
+        system (PeriodicSystem): system
+        config (PeriodicSystemConfig): config
+        sigma_0 (float): width of the state
+
+    Returns:
+    -------
+        StateVector[...]: random coherent state
+
+    """
     potential = convert_potential_to_position_basis(
         system.get_potential(config.shape, config.resolution),
     )
@@ -314,22 +335,12 @@ def get_coherent_thermal_state(
     util = BasisUtil(basis)
 
     # position probabilities
-    x_probability = np.abs(
-        np.exp(-potential["data"] / (config.temperature * Boltzmann)),
-    )
-    x_probability_normalized = np.divide(x_probability, np.sum(x_probability))
+    x_probability_normalized = get_thermal_occupation_x(system, config)
     x_index = np.random.choice(util.nx_points, p=x_probability_normalized)
     x0 = util.get_stacked_index(x_index)
 
     # momentum probabilities
-    k_distance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
-    k_probability = np.abs(
-        np.exp(
-            -np.square(hbar * k_distance)
-            / (2 * system.mass * config.temperature * Boltzmann),
-        ),
-    )
-    k_probability_normalized = np.divide(k_probability, np.sum(k_probability))
+    k_probability_normalized = get_thermal_occupation_k(system, config)
     k_index = np.random.choice(util.nx_points, p=k_probability_normalized)
     k0 = util.get_stacked_index(k_index)
 
@@ -388,6 +399,37 @@ def get_band_resolved_boltzmann_isf(
     return {
         "data": mean,
         "basis": TupleBasis(bands, times),
+        "standard_deviation": sd,
+    }
+
+
+def get_coherent_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _BT0,
+    *,
+    direction: tuple[int, ...] | None = None,
+    n_repeats: int = 10,
+    sigma_0: float | None = None,
+) -> StatisticalValueList[_BT0]:
+    sigma_0 = system.lattice_constant / 10 if sigma_0 is None else sigma_0
+    hamiltonian = get_hamiltonian(system, config)
+    operator = get_periodic_x_operator_sparse(
+        hamiltonian["basis"][1],
+        direction=direction,
+    )
+
+    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
+    for i in range(n_repeats):
+        state = get_random_coherent_state(system, config, sigma_0)
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data[i, :] = data["data"]
+
+    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+    sd = np.std(isf_data, axis=0, dtype=np.complex128)
+    return {
+        "data": mean,
+        "basis": times,
         "standard_deviation": sd,
     }
 

@@ -5,7 +5,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import electron_volt  # type: ignore bad types
+from scipy.constants import (  # type: ignore bad types
+    Boltzmann,
+    electron_volt,
+    hbar,
+)
 from surface_potential_analysis.basis.basis import (
     FundamentalPositionBasis,
     FundamentalTransformedBasis,
@@ -36,6 +40,7 @@ from surface_potential_analysis.hamiltonian_builder.momentum_basis import (
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_basis,
+    convert_potential_to_position_basis,
 )
 from surface_potential_analysis.stacked_basis.build import (
     fundamental_transformed_stacked_basis_from_shape,
@@ -449,8 +454,7 @@ def get_coherent_state(
     basis_x = stacked_basis_as_fundamental_position_basis(basis)
 
     util = BasisUtil(basis_x)
-    dx_stacked = util.delta_x_stacked
-    unit_vectors = [s / np.linalg.norm(s) for s in dx_stacked]
+    dx_stacked = util.dx_stacked
 
     idx = util.get_flat_index(x_0)
 
@@ -464,7 +468,7 @@ def get_coherent_state(
         )
     )
     # stores distance from x0
-    distance = np.linalg.norm(np.einsum("ji,jk->ik", nx, unit_vectors), axis=1)
+    distance = np.linalg.norm(np.einsum("ji,jk->ik", nx, dx_stacked), axis=1)
 
     # i k.(x - x')
     dk = tuple(n / f for (n, f) in zip(k_0, basis_x.shape))
@@ -477,3 +481,33 @@ def get_coherent_state(
     norm = np.sqrt(np.sum(np.square(np.abs(data))))
 
     return convert_state_vector_to_basis({"basis": basis_x, "data": data / norm}, basis)
+
+
+def get_thermal_occupation_x(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> np.ndarray[Any, np.dtype[np.float64]]:
+    potential = convert_potential_to_position_basis(
+        system.get_potential(config.shape, config.resolution),
+    )
+    x_probability = np.abs(
+        np.exp(-potential["data"] / (config.temperature * Boltzmann)),
+    )
+    return x_probability / np.sum(x_probability)
+
+
+def get_thermal_occupation_k(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> np.ndarray[Any, np.dtype[np.float64]]:
+    potential = system.get_potential(config.shape, config.resolution)
+    k_basis = stacked_basis_as_fundamental_momentum_basis(potential["basis"])
+    util = BasisUtil(k_basis)
+    k_distance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
+    k_probability = np.abs(
+        np.exp(
+            -np.square(hbar * k_distance)
+            / (2 * system.mass * config.temperature * Boltzmann),
+        ),
+    )
+    return k_probability / np.sum(k_probability)

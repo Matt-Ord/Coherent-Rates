@@ -1,7 +1,4 @@
-import numpy as np
-from scipy.constants import Boltzmann, hbar
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.basis.util import BasisUtil
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_position_basis,
 )
@@ -14,11 +11,13 @@ from surface_potential_analysis.state_vector.plot import (
 )
 from surface_potential_analysis.util.plot import plot_data_2d_k, plot_data_2d_x
 
-from coherent_rates.isf import get_coherent_thermal_state, get_random_boltzmann_state
+from coherent_rates.isf import get_random_boltzmann_state, get_random_coherent_state
 from coherent_rates.plot import plot_system_evolution_2d
 from coherent_rates.system import (
     SODIUM_COPPER_SYSTEM_2D,
     PeriodicSystemConfig,
+    get_thermal_occupation_k,
+    get_thermal_occupation_x,
 )
 
 if __name__ == "__main__":
@@ -34,7 +33,9 @@ if __name__ == "__main__":
     ax.set_title("Boltzmann state in momentum space")
     fig.show()
 
-    coherent_state = get_coherent_thermal_state(system, config, 2)
+    sigma = system.lattice_constant / 10
+
+    coherent_state = get_random_coherent_state(system, config, sigma)
     fig, ax, line = plot_state_2d_x(coherent_state)
     ax.set_title("Coherent state in real space")
     fig.show()
@@ -49,25 +50,14 @@ if __name__ == "__main__":
     )
     basis = potential["basis"]
     k_basis = stacked_basis_as_fundamental_momentum_basis(basis)
-    util = BasisUtil(basis)
 
-    x_probability = np.abs(
-        np.exp(-potential["data"] / (config.temperature * Boltzmann)),
-    )
-    x_probability_normalized = np.divide(x_probability, np.sum(x_probability))
+    x_probability_normalized = get_thermal_occupation_x(system, config)
 
     fig, ax, line = plot_data_2d_x(basis, x_probability_normalized)
     ax.set_title("probability distribution of initial position")
     fig.show()
 
-    k_distance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
-    k_probability = np.abs(
-        np.exp(
-            -np.square(hbar * k_distance)
-            / (2 * system.mass * config.temperature * Boltzmann),
-        ),
-    )
-    k_probability_normalized = np.divide(k_probability, np.sum(k_probability))
+    k_probability_normalized = get_thermal_occupation_k(system, config)
     fig, ax, line = plot_data_2d_k(k_basis, k_probability_normalized)
     ax.set_title("probability distribution of initial momentum")
     fig.show()
