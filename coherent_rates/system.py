@@ -5,7 +5,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import electron_volt  # type: ignore bad types
+from scipy.constants import (  # type: ignore bad types
+    Boltzmann,
+    electron_volt,
+    hbar,
+)
 from surface_potential_analysis.basis.basis import (
     FundamentalPositionBasis,
     FundamentalTransformedBasis,
@@ -27,6 +31,7 @@ from surface_potential_analysis.basis.stacked_basis import (
 from surface_potential_analysis.basis.time_basis_like import (
     EvenlySpacedTimeBasis,
 )
+from surface_potential_analysis.basis.util import BasisUtil
 from surface_potential_analysis.dynamics.schrodinger.solve import (
     solve_schrodinger_equation_diagonal,
 )
@@ -35,6 +40,7 @@ from surface_potential_analysis.hamiltonian_builder.momentum_basis import (
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_basis,
+    convert_potential_to_position_basis,
 )
 from surface_potential_analysis.stacked_basis.build import (
     fundamental_transformed_stacked_basis_from_shape,
@@ -43,7 +49,9 @@ from surface_potential_analysis.stacked_basis.conversion import (
     stacked_basis_as_fundamental_momentum_basis,
     stacked_basis_as_fundamental_position_basis,
 )
-from surface_potential_analysis.state_vector.state_vector import calculate_normalization
+from surface_potential_analysis.state_vector.conversion import (
+    convert_state_vector_to_basis,
+)
 from surface_potential_analysis.util.decorators import timed
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     BlochBasis,
@@ -434,29 +442,72 @@ def get_step_state_1d(
     return initial_state
 
 
-def get_gaussian_state_1d(
-    system: PeriodicSystem1d,
+_SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
+
+
+def get_coherent_state(
+    basis: _SBV0,
+    x_0: tuple[int, ...],
+    k_0: tuple[int, ...],
+    sigma_0: float,
+) -> StateVector[_SBV0]:
+    basis_x = stacked_basis_as_fundamental_position_basis(basis)
+
+    util = BasisUtil(basis_x)
+    dx_stacked = util.dx_stacked
+
+    idx = util.get_flat_index(x_0)
+
+    # nx[i,j] stores the ith component displacement jth point from x0
+    nx = tuple(
+        (n_x_points[idx] - n_x_points[:] + n // 2) % n - (n // 2)
+        for (n_x_points, n) in zip(
+            util.fundamental_stacked_nx_points,
+            util.fundamental_shape,
+            strict=True,
+        )
+    )
+    # stores distance from x0
+    distance = np.linalg.norm(np.einsum("ji,jk->ik", nx, dx_stacked), axis=1)
+
+    # i k.(x - x')
+    dk = tuple(n / f for (n, f) in zip(k_0, basis_x.shape))
+    phi = (2 * np.pi) * np.einsum(  # type: ignore unknown lib type
+        "ij,i->j",
+        nx,
+        dk,
+    )
+    data = np.exp(-1j * phi - np.square(distance / sigma_0) / 2)
+    norm = np.sqrt(np.sum(np.square(np.abs(data))))
+
+    return convert_state_vector_to_basis({"basis": basis_x, "data": data / norm}, basis)
+
+
+def get_thermal_occupation_x(
+    system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    fraction: float,
-) -> StateVector[TupleBasisWithLengthLike[FundamentalPositionBasis[Any, Literal[1]]]]:
+) -> np.ndarray[Any, np.dtype[np.float64]]:
+    potential = convert_potential_to_position_basis(
+        system.get_potential(config.shape, config.resolution),
+    )
+    x_probability = np.abs(
+        np.exp(-potential["data"] / (config.temperature * Boltzmann)),
+    )
+    return x_probability / np.sum(x_probability)
+
+
+def get_thermal_occupation_k(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> np.ndarray[Any, np.dtype[np.float64]]:
     potential = system.get_potential(config.shape, config.resolution)
-    basis = stacked_basis_as_fundamental_position_basis(potential["basis"])
-
-    size = basis.n
-    width = size * fraction
-    data = np.zeros(basis.n, dtype=np.complex128)
-
-    for i in range(size):
-        data[i] = -np.square(i - size / 2) / (2 * width * width)
-
-    data = np.exp(data)
-    initial_state: StateVector[Any] = {
-        "basis": basis,
-        "data": data,
-    }
-    initial_state["data"] = initial_state["data"] / np.sqrt(
-        calculate_normalization(
-            initial_state,
+    k_basis = stacked_basis_as_fundamental_momentum_basis(potential["basis"])
+    util = BasisUtil(k_basis)
+    k_distance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
+    k_probability = np.abs(
+        np.exp(
+            -np.square(hbar * k_distance)
+            / (2 * system.mass * config.temperature * Boltzmann),
         ),
     )
-    return initial_state
+    return k_probability / np.sum(k_probability)

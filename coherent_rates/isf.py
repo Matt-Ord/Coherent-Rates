@@ -8,12 +8,14 @@ import numpy as np
 from scipy.constants import Boltzmann  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
+    FundamentalPositionBasis,
     FundamentalTransformedBasis,
 )
 from surface_potential_analysis.basis.basis_like import BasisLike
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
     TupleBasis,
+    TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import (
     BasisWithTimeLike,
@@ -26,6 +28,9 @@ from surface_potential_analysis.dynamics.schrodinger.solve import (
 from surface_potential_analysis.operator.operator import (
     SingleBasisDiagonalOperator,
     apply_operator_to_state,
+)
+from surface_potential_analysis.potential.conversion import (
+    convert_potential_to_position_basis,
 )
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
@@ -49,7 +54,12 @@ from coherent_rates.scattering_operator import (
     apply_scattering_operator_to_states,
     get_periodic_x_operator_sparse,
 )
-from coherent_rates.system import get_hamiltonian
+from coherent_rates.system import (
+    get_coherent_state,
+    get_hamiltonian,
+    get_thermal_occupation_k,
+    get_thermal_occupation_x,
+)
 
 if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
@@ -298,6 +308,45 @@ def _get_boltzmann_isf_from_hamiltonian(
     }
 
 
+def get_random_coherent_state(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    sigma_0: float,
+) -> StateVector[
+    TupleBasisWithLengthLike[*tuple[FundamentalPositionBasis[Any, Any], ...]]
+]:
+    """Generate a Gaussian state with x0,k0 given approximately by a thermal distribution.
+
+    Args:
+    ----
+        system (PeriodicSystem): system
+        config (PeriodicSystemConfig): config
+        sigma_0 (float): width of the state
+
+    Returns:
+    -------
+        StateVector[...]: random coherent state
+
+    """
+    potential = convert_potential_to_position_basis(
+        system.get_potential(config.shape, config.resolution),
+    )
+    basis = potential["basis"]
+    util = BasisUtil(basis)
+
+    # position probabilities
+    x_probability_normalized = get_thermal_occupation_x(system, config)
+    x_index = np.random.choice(util.nx_points, p=x_probability_normalized)
+    x0 = util.get_stacked_index(x_index)
+
+    # momentum probabilities
+    k_probability_normalized = get_thermal_occupation_k(system, config)
+    k_index = np.random.choice(util.nx_points, p=k_probability_normalized)
+    k0 = util.get_stacked_index(k_index)
+
+    return get_coherent_state(basis, x0, k0, sigma_0)
+
+
 @timed
 def get_boltzmann_isf(
     system: PeriodicSystem,
@@ -354,6 +403,37 @@ def get_band_resolved_boltzmann_isf(
     }
 
 
+def get_coherent_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _BT0,
+    *,
+    direction: tuple[int, ...] | None = None,
+    n_repeats: int = 10,
+    sigma_0: float | None = None,
+) -> StatisticalValueList[_BT0]:
+    sigma_0 = system.lattice_constant / 10 if sigma_0 is None else sigma_0
+    hamiltonian = get_hamiltonian(system, config)
+    operator = get_periodic_x_operator_sparse(
+        hamiltonian["basis"][1],
+        direction=direction,
+    )
+
+    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
+    for i in range(n_repeats):
+        state = get_random_coherent_state(system, config, sigma_0)
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data[i, :] = data["data"]
+
+    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+    sd = np.std(isf_data, axis=0, dtype=np.complex128)
+    return {
+        "data": mean,
+        "basis": times,
+        "standard_deviation": sd,
+    }
+
+
 class MomentumBasis(FundamentalBasis[Any]):  # noqa: D101
     def __init__(self, k_points: np.ndarray[Any, np.dtype[np.float64]]) -> None:  # noqa: D107, ANN101
         self._k_points = k_points
@@ -390,7 +470,7 @@ def _get_default_nk_points(config: PeriodicSystemConfig) -> list[tuple[int, ...]
     )
 
 
-def _get_ak_data_path(
+def _get_rate_against_momentum_data_path(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
@@ -415,7 +495,7 @@ def get_value_list_at_idx(
     return {"basis": basis, "data": data}
 
 
-@npy_cached_dict(_get_ak_data_path, load_pickle=True)
+@npy_cached_dict(_get_rate_against_momentum_data_path, load_pickle=True)
 def get_rate_against_momentum_data(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
@@ -555,18 +635,15 @@ class RateAgainstMomentumFitData:
 
     gradient: float
     intercept: float
-    effective_mass: float
 
 
 def get_rate_against_momentum_linear_fit(
-    config: PeriodicSystemConfig,
     values: ValueList[MomentumBasis],
 ) -> RateAgainstMomentumFitData:
     k_points = values["basis"].k_points
     rates = values["data"]
     gradient, intercept = np.polyfit(k_points, rates, 1)
-    effective_mass = calculate_effective_mass_from_gradient(config, gradient)
-    return RateAgainstMomentumFitData(gradient, intercept, effective_mass)
+    return RateAgainstMomentumFitData(gradient, intercept)
 
 
 @timed

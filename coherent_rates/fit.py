@@ -397,6 +397,7 @@ class GaussianPlusExponentialMethod(
             (1 - a - c)
             + a * np.exp(-1 * np.square(x / b) / 2)
             + c * np.exp(-1 * x / d)
+            - 1000 * max(np.sign(b - d), 0)
             - 1000 * max(a + c - 1, 0)
         )
 
