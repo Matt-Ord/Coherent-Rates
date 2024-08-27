@@ -330,6 +330,13 @@ SODIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
     mass=3.8175458e-26,
 )
 
+SODIUM_COPPER_BRIDGE_SYSTEM_1D = PeriodicSystem1d(
+    id="NaCuB",
+    barrier_energy=12e-3 * electron_volt,
+    lattice_constant=3.615e-10,
+    mass=3.8175458e-26,
+)
+
 SODIUM_COPPER_SYSTEM_2D = PeriodicSystem2d(
     id="NaCu",
     barrier_energy=55e-3 * electron_volt,
@@ -511,3 +518,24 @@ def get_thermal_occupation_k(
         ),
     )
     return k_probability / np.sum(k_probability)
+
+
+def get_random_coherent_coordinates(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    potential = convert_potential_to_position_basis(
+        system.get_potential(config.shape, config.resolution),
+    )
+    basis = potential["basis"]
+    util = BasisUtil(basis)
+    # position probabilities
+    x_probability_normalized = get_thermal_occupation_x(system, config)
+    x_index = np.random.choice(util.nx_points, p=x_probability_normalized)
+    x0 = cast(tuple[int, ...], util.get_stacked_index(x_index))
+
+    # momentum probabilities
+    k_probability_normalized = get_thermal_occupation_k(system, config)
+    k_index = np.random.choice(util.nx_points, p=k_probability_normalized)
+    k0 = cast(tuple[int, ...], util.get_stacked_index(k_index))
+    return (x0, k0)

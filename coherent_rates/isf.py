@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann  # type: ignore library type
+from scipy.constants import Boltzmann, hbar  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -32,6 +32,10 @@ from surface_potential_analysis.operator.operator import (
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_position_basis,
 )
+from surface_potential_analysis.stacked_basis.conversion import (
+    stacked_basis_as_fundamental_momentum_basis,
+    stacked_basis_as_fundamental_position_basis,
+)
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
 )
@@ -57,8 +61,7 @@ from coherent_rates.scattering_operator import (
 from coherent_rates.system import (
     get_coherent_state,
     get_hamiltonian,
-    get_thermal_occupation_k,
-    get_thermal_occupation_x,
+    get_random_coherent_coordinates,
 )
 
 if TYPE_CHECKING:
@@ -229,16 +232,20 @@ def get_isf(
     return _get_isf_from_hamiltonian(hamiltonian, operator, initial_state, times)
 
 
-def _get_boltzmann_state_from_hamiltonian(
+def get_boltzmann_state_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
     temperature: float,
-    phase: np.ndarray[tuple[int], np.dtype[np.float64]],
+    phase: np.ndarray[tuple[int], np.dtype[np.float64]] | None = None,
 ) -> StateVector[_B0]:
     boltzmann_distribution = np.exp(
         -hamiltonian["data"] / (2 * Boltzmann * temperature),
     )
     normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
-    boltzmann_state = boltzmann_distribution * np.exp(1j * phase) / normalization
+    boltzmann_state = (
+        boltzmann_distribution / normalization
+        if phase is None
+        else boltzmann_distribution * np.exp(1j * phase) / normalization
+    )
     return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
 
 
@@ -248,7 +255,7 @@ def _get_random_boltzmann_state_from_hamiltonian(
 ) -> StateVector[_B0]:
     rng = np.random.default_rng()
     phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
-    return _get_boltzmann_state_from_hamiltonian(hamiltonian, temperature, phase)
+    return get_boltzmann_state_from_hamiltonian(hamiltonian, temperature, phase)
 
 
 def get_random_boltzmann_state(
@@ -332,17 +339,8 @@ def get_random_coherent_state(
         system.get_potential(config.shape, config.resolution),
     )
     basis = potential["basis"]
-    util = BasisUtil(basis)
 
-    # position probabilities
-    x_probability_normalized = get_thermal_occupation_x(system, config)
-    x_index = np.random.choice(util.nx_points, p=x_probability_normalized)
-    x0 = util.get_stacked_index(x_index)
-
-    # momentum probabilities
-    k_probability_normalized = get_thermal_occupation_k(system, config)
-    k_index = np.random.choice(util.nx_points, p=k_probability_normalized)
-    k0 = util.get_stacked_index(k_index)
+    x0, k0 = get_random_coherent_coordinates(system, config)
 
     return get_coherent_state(basis, x0, k0, sigma_0)
 
@@ -365,6 +363,31 @@ def get_boltzmann_isf(
         direction,
         n_repeats=n_repeats,
     )
+
+
+def get_analytical_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: _BT0,
+    direction: tuple[int, ...] | None = None,
+) -> ValueList[_BT0]:
+    direction = tuple(1 for _ in config.shape) if direction is None else direction
+    basis = stacked_basis_as_fundamental_position_basis(
+        system.get_potential(config.shape, config.resolution)["basis"],
+    )
+    dk_stacked = BasisUtil(basis).dk_stacked
+    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))  # type: ignore library type
+
+    data = np.exp(
+        (
+            -1 * Boltzmann * config.temperature * np.square(times.times)
+            + 1j * hbar * times.times
+        )
+        * k
+        * k
+        / (2 * system.mass),  # type: ignore unknown
+    )
+    return {"data": data, "basis": times}
 
 
 def get_band_resolved_boltzmann_isf(
@@ -419,11 +442,18 @@ def get_coherent_isf(
         direction=direction,
     )
 
-    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
+    isf_data = np.zeros((2 * n_repeats, times.n), dtype=np.complex128)
     for i in range(n_repeats):
-        state = get_random_coherent_state(system, config, sigma_0)
+        x0, k0 = get_random_coherent_coordinates(system, config)
+
+        state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
         isf_data[i, :] = data["data"]
+
+        k0 = tuple([-j for j in k0])
+        state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data[i + n_repeats, :] = data["data"]
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
@@ -652,7 +682,7 @@ def get_rate_against_temperature_and_momentum_data(
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
-    temperatures: list[int] | None = None,
+    temperatures: list[float] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> ValueList[
     TupleBasis[TupleBasis[FundamentalBasis[int], FundamentalBasis[int]], MomentumBasis]
@@ -681,8 +711,10 @@ def get_rate_against_temperature_and_momentum_data(
         rate_data = rate_data.reshape(n_rates, -1)
         data[:, j, :] = rate_data
 
-    hamiltonian = get_hamiltonian(system, config)
-    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
+    basis = stacked_basis_as_fundamental_momentum_basis(
+        system.get_potential(config.shape, config.resolution)["basis"],
+    )
+    dk_stacked = BasisUtil(basis).dk_stacked
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore einsum
     basis = MomentumBasis(k_points)
 
@@ -692,6 +724,58 @@ def get_rate_against_temperature_and_momentum_data(
             TupleBasis(
                 FundamentalBasis(n_rates),
                 FundamentalBasis(n_temperatures),
+            ),
+            basis,
+        ),
+    }
+
+
+@timed
+def get_rate_against_mass_and_momentum_data(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    masses: list[float] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> ValueList[
+    TupleBasis[TupleBasis[FundamentalBasis[int], FundamentalBasis[int]], MomentumBasis]
+]:
+    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    masses = [(1 + 5 * i) * system.mass for i in range(5)] if masses is None else masses
+
+    n_rates = fit_method.n_rates()
+    n_masses = len(masses)
+    data = np.zeros(
+        (n_rates, n_masses, len(nk_points)),
+        dtype=np.complex128,
+    )
+
+    for j, mass in enumerate(masses):
+        system.mass = mass
+        rate_data = get_rate_against_momentum_data(
+            system,
+            config,
+            fit_method=fit_method,
+            nk_points=nk_points,
+        )["data"]
+        rate_data = rate_data.reshape(n_rates, -1)
+        data[:, j, :] = rate_data
+
+    basis = stacked_basis_as_fundamental_momentum_basis(
+        system.get_potential(config.shape, config.resolution)["basis"],
+    )
+    dk_stacked = BasisUtil(basis).dk_stacked
+    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore einsum
+    basis = MomentumBasis(k_points)
+
+    return {
+        "data": data.ravel(),
+        "basis": TupleBasis(
+            TupleBasis(
+                FundamentalBasis(n_rates),
+                FundamentalBasis(n_masses),
             ),
             basis,
         ),
