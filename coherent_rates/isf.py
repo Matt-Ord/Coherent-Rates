@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 from scipy.constants import Boltzmann, hbar  # type: ignore library type
@@ -462,16 +462,6 @@ def get_coherent_isf(
         "basis": times,
         "standard_deviation": sd,
     }
-
-
-class MomentumBasis(FundamentalBasis[Any]):  # noqa: D101
-    def __init__(self, k_points: np.ndarray[Any, np.dtype[np.float64]]) -> None:  # noqa: D107, ANN101
-        self._k_points = k_points
-        super().__init__(k_points.size)
-
-    @property
-    def k_points(self: Self) -> np.ndarray[Any, np.dtype[np.float64]]:
-        return self._k_points
 
 
 def get_free_particle_time(
