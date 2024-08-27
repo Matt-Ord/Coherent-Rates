@@ -56,11 +56,14 @@ from surface_potential_analysis.wavepacket.plot import (
 from coherent_rates.fit import GaussianMethod, GaussianPlusExponentialMethod
 from coherent_rates.isf import (
     MomentumBasis,
+    get_analytical_isf,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
+    get_boltzmann_state_from_hamiltonian,
     get_free_particle_time,
     get_isf_pair_states,
     get_random_boltzmann_state,
+    get_rate_against_mass_and_momentum_data,
     get_rate_against_momentum_data,
     get_rate_against_momentum_linear_fit,
     get_rate_against_temperature_and_momentum_data,
@@ -411,6 +414,54 @@ def plot_boltzmann_isf(
     input()
 
 
+def plot_free_isf(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
+    direction: tuple[int, ...] | None = None,
+    *,
+    n_repeats: int = 10,
+) -> None:
+    system = FreeSystem(system)
+    times = _get_default_times(system, config, direction) if times is None else times
+    isf = get_boltzmann_isf(
+        system,
+        config,
+        times,
+        direction,
+        n_repeats=n_repeats,
+    )
+    analytical_isf = get_analytical_isf(system, config, times, direction)
+
+    fig, ax, line = plot_value_list_against_time(isf)
+    line.set_label("Simulated")
+    fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax)
+    line.set_label("Analytical")
+    line.set_linestyle("--")
+    ax.set_title("abs ISF")
+    ax.legend()
+    fig.show()
+
+    fig, ax, line = plot_value_list_against_time(isf, measure="real")
+    line.set_label("Simulated")
+    fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax, measure="real")
+    line.set_label("Analytical")
+    line.set_linestyle("--")
+    ax.set_title("real ISF")
+    ax.legend()
+    fig.show()
+
+    fig, ax, line = plot_value_list_against_time(isf, measure="imag")
+    line.set_label("Simulated")
+    fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax, measure="imag")
+    line.set_label("Analytical")
+    line.set_linestyle("--")
+    ax.set_title("imag ISF")
+    ax.legend()
+    fig.show()
+    input()
+
+
 def plot_band_resolved_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
@@ -654,17 +705,17 @@ def plot_scattered_energy_change_state(
     input()
 
 
-def plot_occupation_against_energy_comparison(
+def plot_occupation_against_energy_comparison_mass(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     mass_ratio: float,
     direction: tuple[int, ...] | None = None,
 ) -> None:
-    direction = tuple(1 for _ in config.shape) if direction is None else direction
-
     hamiltonian = get_hamiltonian(system, config)
+    rng = np.random.default_rng()
+    phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
 
-    state = get_random_boltzmann_state(system, config)
+    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
     operator = get_periodic_x_operator(state["basis"], direction)
     scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
 
@@ -676,6 +727,9 @@ def plot_occupation_against_energy_comparison(
 
     system.mass = system.mass * mass_ratio
     hamiltonian = get_hamiltonian(system, config)
+    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
+    operator = get_periodic_x_operator(state["basis"], direction)
+    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
 
     fig, ax, line1 = plot_total_band_occupation_against_energy(
         hamiltonian,
@@ -693,9 +747,52 @@ def plot_occupation_against_energy_comparison(
     input()
 
 
+def plot_occupation_against_energy_comparison_temperature(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    temperature: float,
+    direction: tuple[int, ...] | None = None,
+) -> None:
+    hamiltonian = get_hamiltonian(system, config)
+    rng = np.random.default_rng()
+    phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
+
+    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
+    operator = get_periodic_x_operator(state["basis"], direction)
+    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
+
+    fig, ax, line = plot_total_band_occupation_against_energy(
+        hamiltonian,
+        scattered_state,
+    )
+    line.set_label(f"T={config.temperature}")
+
+    config.temperature = temperature
+
+    hamiltonian = get_hamiltonian(system, config)
+    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
+    operator = get_periodic_x_operator(state["basis"], direction)
+    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
+
+    fig, ax, line1 = plot_total_band_occupation_against_energy(
+        hamiltonian,
+        scattered_state,
+        ax=ax,
+    )
+    line1.set_label(f"T={temperature}")
+
+    ax.axvline(system.barrier_energy, color="black", ls="--")  # type: ignore library type
+
+    ax.set_xlim(0, 10 * system.barrier_energy)
+    ax.set_ylim(0)
+    ax.legend()  # type: ignore library type
+    fig.show()
+    input()
+
+
 def get_effective_masses(
     data: ValueList[TupleBasis[_B0, MomentumBasis]],
-    temperatures: list[int],
+    temperatures: list[float],
     *,
     rate_index: int = 0,
 ) -> np.ndarray[Any, Any]:
@@ -714,7 +811,7 @@ def plot_rate_against_temperature_and_momentum_data(
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
-    temperatures: list[int] | None = None,
+    temperatures: list[float] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
     fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
@@ -748,5 +845,52 @@ def plot_rate_against_temperature_and_momentum_data(
             f" {fit_method.get_rate_labels()[j]} rate",
         )
         ax.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
+        fig.show()
+    input()
+
+
+def plot_rate_against_mass_and_momentum_data(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    masses: list[float] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    masses = [(1 + 5 * i) * system.mass for i in range(5)] if masses is None else masses
+    data = get_rate_against_mass_and_momentum_data(
+        system,
+        config,
+        fit_method=fit_method,
+        masses=masses,
+        nk_points=nk_points,
+    )
+    for j in range(fit_method.n_rates()):
+        fig, ax = get_figure(None)
+
+        for i, mass in enumerate(masses):
+            value = get_value_list_at_idx(data, j + i)
+            fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
+            line.set_label(f"m={mass:.3e}kg")
+        ax.legend()  # type: ignore unknown
+        ax.set_title(f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum")  # type: ignore unknown
+        fig.show()
+
+        effective_masses = get_effective_masses(
+            data,
+            [config.temperature for _i in masses],
+            rate_index=j,
+        )
+        fig, ax, line = plot_data_1d(effective_masses, np.asarray(masses))
+        ax.set_xlabel("Mass/kg")  # type: ignore unknown
+        ax.set_ylabel("Effective mass/kg")  # type: ignore unknown
+        ax.set_title(  # type: ignore unknown
+            "Plot of Effective mass against mass for"
+            f" {fit_method.get_rate_labels()[j]} rate",
+        )
+        fig, ax, line = plot_data_1d(np.asarray(masses), np.asarray(masses), ax=ax)
+        line.set_color("black")
+        line.set_linestyle("--")
         fig.show()
     input()

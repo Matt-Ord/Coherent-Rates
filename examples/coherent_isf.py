@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # Compare 500 samples to 50 samples
     isf_large = coherent_isf
     fig, ax, line = plot_value_list_against_time(isf_large)
-    line.set_label(f"{n_repeats} runs")
+    line.set_label(f"{n_repeats*2} runs")
 
     n_repeats = 50
     isf_small = get_coherent_isf(
@@ -56,7 +56,7 @@ if __name__ == "__main__":
         n_repeats=n_repeats,
     )
     fig, ax, line = plot_value_list_against_time(isf_small, ax=ax)
-    line.set_label(f"{n_repeats} runs")
+    line.set_label(f"{n_repeats*2} runs")
     ax.legend()
     ax.set_title("Comparison of coherent ISF with a range of sample sizes")
     fig.show()
