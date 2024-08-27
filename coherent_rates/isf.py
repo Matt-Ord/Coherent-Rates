@@ -12,6 +12,7 @@ from surface_potential_analysis.basis.basis import (
     FundamentalTransformedBasis,
 )
 from surface_potential_analysis.basis.basis_like import BasisLike
+from surface_potential_analysis.basis.momentum_basis_like import MomentumBasis
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
     TupleBasis,
@@ -322,7 +323,9 @@ def get_random_coherent_state(
 ) -> StateVector[
     TupleBasisWithLengthLike[*tuple[FundamentalPositionBasis[Any, Any], ...]]
 ]:
-    """Generate a Gaussian state with x0,k0 given approximately by a thermal distribution.
+    """Generate a Gaussian state.
+
+    x0,k0 are given approximately by a thermal distribution.
 
     Args:
     ----
@@ -435,6 +438,25 @@ def get_coherent_isf(
     n_repeats: int = 10,
     sigma_0: float | None = None,
 ) -> StatisticalValueList[_BT0]:
+    """Get the isf with n_repeats coherent wavepackets.
+
+    Parameters
+    ----------
+    system : PeriodicSystem
+    config : PeriodicSystemConfig
+    times : _BT0
+    direction : tuple[int, ...] | None, optional
+        direction, by default None
+    n_repeats : int, optional
+        n_repeats, by default 10
+    sigma_0 : float | None, optional
+        sigma_0, by default None
+
+    Returns
+    -------
+    StatisticalValueList[_BT0]
+
+    """
     sigma_0 = system.lattice_constant / 10 if sigma_0 is None else sigma_0
     hamiltonian = get_hamiltonian(system, config)
     operator = get_periodic_x_operator_sparse(

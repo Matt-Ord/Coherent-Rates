@@ -55,7 +55,6 @@ from surface_potential_analysis.wavepacket.plot import (
 
 from coherent_rates.fit import GaussianMethod, GaussianPlusExponentialMethod
 from coherent_rates.isf import (
-    MomentumBasis,
     get_analytical_isf,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
@@ -89,6 +88,7 @@ if TYPE_CHECKING:
     from surface_potential_analysis.basis.explicit_basis import (
         ExplicitStackedBasisWithLength,
     )
+    from surface_potential_analysis.basis.momentum_basis_like import MomentumBasis
     from surface_potential_analysis.basis.stacked_basis import (
         StackedBasisLike,
         StackedBasisWithVolumeLike,
@@ -438,8 +438,8 @@ def plot_free_isf(
     fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax)
     line.set_label("Analytical")
     line.set_linestyle("--")
-    ax.set_title("abs ISF")
-    ax.legend()
+    ax.set_title("abs ISF")  # type: ignore library type
+    ax.legend()  # type: ignore library type
     fig.show()
 
     fig, ax, line = plot_value_list_against_time(isf, measure="real")
@@ -447,8 +447,8 @@ def plot_free_isf(
     fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax, measure="real")
     line.set_label("Analytical")
     line.set_linestyle("--")
-    ax.set_title("real ISF")
-    ax.legend()
+    ax.set_title("real ISF")  # type: ignore library type
+    ax.legend()  # type: ignore library type
     fig.show()
 
     fig, ax, line = plot_value_list_against_time(isf, measure="imag")
@@ -456,8 +456,8 @@ def plot_free_isf(
     fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax, measure="imag")
     line.set_label("Analytical")
     line.set_linestyle("--")
-    ax.set_title("imag ISF")
-    ax.legend()
+    ax.set_title("imag ISF")  # type: ignore library type
+    ax.legend()  # type: ignore library type
     fig.show()
     input()
 
