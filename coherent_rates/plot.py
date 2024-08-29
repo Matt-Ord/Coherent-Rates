@@ -961,3 +961,66 @@ def plot_rate_against_temperature_mass_and_momentum(
     ax1.legend()  # type: ignore unknown
     fig1.show()
     input()
+
+
+def plot_rate_against_temperature_barrier_energy_and_momentum(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    temperatures: list[float] | None = None,
+    barrier_energies: list[float] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    temperatures = (
+        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
+    )
+    barrier_energies = (
+        [(1 + 5 * i) * system.barrier_energy for i in range(5)]
+        if barrier_energies is None
+        else barrier_energies
+    )
+    fig1, ax1 = get_figure(None)
+    system1 = copy.copy(system)
+    for barrier_energy in barrier_energies:
+        system1.barrier_energy = barrier_energy
+        data = get_rate_against_temperature_and_momentum_data(
+            system1,
+            config,
+            fit_method=fit_method,
+            temperatures=temperatures,
+            nk_points=nk_points,
+        )
+        for j in range(fit_method.n_rates()):
+            fig, ax = get_figure(None)
+
+            for i, temperature in enumerate(temperatures):
+                value = get_value_list_at_idx(data, j + i)
+                fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
+                line.set_label(f"T={temperature}K")
+            ax.legend()  # type: ignore unknown
+            ax.set_title(  # type: ignore unknown
+                f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum, barrier energy = {barrier_energy:.3e}J",
+            )
+            fig.show()
+
+            effective_masses = get_effective_masses(data, temperatures, rate_index=j)
+            fig1, ax1, line1 = plot_data_1d(
+                effective_masses,
+                np.asarray(temperatures),
+                ax=ax1,
+            )
+            line1.set_label(f"{barrier_energy:.3e}J")
+
+    ax1.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
+    ax1.set_xlabel("Temperature/K")  # type: ignore unknown
+    ax1.set_ylabel("Effective mass")  # type: ignore unknown
+    ax1.set_title(  # type: ignore unknown
+        "Plot of Effective mass against temperature for"
+        f" {fit_method.get_rate_labels()[j]} rate",
+    )
+
+    ax1.legend()  # type: ignore unknown
+    fig1.show()
+    input()
