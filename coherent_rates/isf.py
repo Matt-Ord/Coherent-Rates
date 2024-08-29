@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
@@ -381,14 +382,11 @@ def get_analytical_isf(
     dk_stacked = BasisUtil(basis).dk_stacked
     k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))  # type: ignore library type
 
+    # ISF(k, t) = exp(-(kTt^2 - i hbar t)* energy)
+    energy = k**2 / (2 * system.mass)
+    boltzmann_energy = Boltzmann * config.temperature
     data = np.exp(
-        (
-            -1 * Boltzmann * config.temperature * np.square(times.times)
-            + 1j * hbar * times.times
-        )
-        * k
-        * k
-        / (2 * system.mass),  # type: ignore unknown
+        (-1 * boltzmann_energy * times.times**2 + 1j * hbar * times.times) * energy,
     )
     return {"data": data, "basis": times}
 
@@ -699,6 +697,7 @@ def get_rate_against_temperature_and_momentum_data(
 ) -> ValueList[
     TupleBasis[TupleBasis[FundamentalBasis[int], FundamentalBasis[int]], MomentumBasis]
 ]:
+    config1 = copy.copy(config)
     fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
     temperatures = (
@@ -713,10 +712,10 @@ def get_rate_against_temperature_and_momentum_data(
     )
 
     for j, temperature in enumerate(temperatures):
-        config.temperature = temperature
+        config1.temperature = temperature
         rate_data = get_rate_against_momentum_data(
             system,
-            config,
+            config1,
             fit_method=fit_method,
             nk_points=nk_points,
         )["data"]
@@ -756,6 +755,7 @@ def get_rate_against_mass_and_momentum_data(
     fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
     masses = [(1 + 5 * i) * system.mass for i in range(5)] if masses is None else masses
+    system1 = copy.copy(system)
 
     n_rates = fit_method.n_rates()
     n_masses = len(masses)
@@ -765,9 +765,9 @@ def get_rate_against_mass_and_momentum_data(
     )
 
     for j, mass in enumerate(masses):
-        system.mass = mass
+        system1.mass = mass
         rate_data = get_rate_against_momentum_data(
-            system,
+            system1,
             config,
             fit_method=fit_method,
             nk_points=nk_points,

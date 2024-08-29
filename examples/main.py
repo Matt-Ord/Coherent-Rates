@@ -3,6 +3,7 @@ from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBas
 from coherent_rates.plot import (
     plot_band_resolved_boltzmann_isf,
     plot_boltzmann_isf,
+    plot_free_isf,
     plot_pair_system_evolution_1d,
 )
 from coherent_rates.system import (
@@ -15,6 +16,8 @@ if __name__ == "__main__":
     system = HYDROGEN_NICKEL_SYSTEM_1D
 
     times = EvenlySpacedTimeBasis(100, 1, 0, 1e-13)
+
+    plot_free_isf(system, config, times, (10,))
 
     plot_pair_system_evolution_1d(system, config, times, direction=(10,))
     plot_boltzmann_isf(system, config, times, (10,))
