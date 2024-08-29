@@ -1,4 +1,3 @@
-from coherent_rates.fit import GaussianMethod
 from coherent_rates.plot import (
     plot_rate_against_mass_and_momentum,
     plot_rate_against_temperature_and_momentum,
@@ -25,7 +24,6 @@ if __name__ == "__main__":
         config,
         masses=masses,
         nk_points=nk_points,
-        fit_method=GaussianMethod(),
     )
 
     plot_rate_against_temperature_and_momentum(
@@ -33,7 +31,6 @@ if __name__ == "__main__":
         config,
         temperatures=temperatures,
         nk_points=nk_points,
-        fit_method=GaussianMethod(),
     )
 
     plot_rate_against_temperature_mass_and_momentum(
@@ -42,7 +39,6 @@ if __name__ == "__main__":
         temperatures=temperatures,
         masses=masses,
         nk_points=nk_points,
-        fit_method=GaussianMethod(),
     )
 
     plot_rate_against_temperature_barrier_energy_and_momentum(
@@ -51,5 +47,4 @@ if __name__ == "__main__":
         temperatures=temperatures,
         barrier_energies=barrier_energies,
         nk_points=nk_points,
-        fit_method=GaussianMethod(),
     )

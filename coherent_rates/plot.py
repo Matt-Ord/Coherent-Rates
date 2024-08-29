@@ -54,7 +54,7 @@ from surface_potential_analysis.wavepacket.plot import (
     plot_wavepacket_transformed_energy_effective_mass_1d,
 )
 
-from coherent_rates.fit import GaussianMethod, GaussianPlusExponentialMethod
+from coherent_rates.fit import GaussianMethod
 from coherent_rates.isf import (
     get_analytical_isf,
     get_band_resolved_boltzmann_isf,
@@ -815,7 +815,7 @@ def plot_rate_against_temperature_and_momentum(
     temperatures: list[float] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
-    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     temperatures = (
         [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
     )
@@ -847,7 +847,7 @@ def plot_rate_against_temperature_and_momentum(
         )
         barrier_temperature = system.barrier_energy / Boltzmann
 
-        ax.axhline(1, color="black", ls="--")  # type: ignore unknown
+        ax.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
         ax.axvline(barrier_temperature, color="black", ls="--")  # type: ignore unknown
         fig.show()
     input()
@@ -861,7 +861,7 @@ def plot_rate_against_mass_and_momentum(
     masses: list[float] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
-    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     masses = [(1 + 5 * i) * system.mass for i in range(5)] if masses is None else masses
     data = get_rate_against_mass_and_momentum_data(
         system,
@@ -909,7 +909,7 @@ def plot_rate_against_temperature_mass_and_momentum(
     masses: list[float] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
 ) -> None:
-    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     temperatures = (
         [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
     )
@@ -934,7 +934,7 @@ def plot_rate_against_temperature_mass_and_momentum(
                 line.set_label(f"T={temperature}K")
             ax.legend()  # type: ignore unknown
             ax.set_title(  # type: ignore unknown
-                f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum, mass {mass:.3e}kg",
+                f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum, mass {mass:.3e}kg",  # noqa: E501
             )
             fig.show()
 
@@ -971,8 +971,9 @@ def plot_rate_against_temperature_barrier_energy_and_momentum(
     temperatures: list[float] | None = None,
     barrier_energies: list[float] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
+    normalized: bool = False,
 ) -> None:
-    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
+    fit_method = GaussianMethod() if fit_method is None else fit_method
     temperatures = (
         [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
     )
@@ -1001,20 +1002,29 @@ def plot_rate_against_temperature_barrier_energy_and_momentum(
                 line.set_label(f"T={temperature}K")
             ax.legend()  # type: ignore unknown
             ax.set_title(  # type: ignore unknown
-                f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum, barrier energy = {barrier_energy:.3e}J",
+                f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum, barrier energy = {barrier_energy:.3e}J",  # noqa: E501
             )
             fig.show()
 
             effective_masses = get_effective_masses(data, temperatures, rate_index=j)
+            barrier_temperature = barrier_energy / Boltzmann
+            temperatures_norm = (
+                np.divide(temperatures, barrier_temperature)
+                if normalized
+                else np.asarray(temperatures)
+            )
             fig1, ax1, line1 = plot_data_1d(
                 effective_masses,
-                np.asarray(temperatures),
+                temperatures_norm,
                 ax=ax1,
             )
             line1.set_label(f"{barrier_energy:.3e}J")
 
     ax1.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
-    ax1.set_xlabel("Temperature/K")  # type: ignore unknown
+    if normalized:
+        ax1.set_xlabel("$k_{B}T/Barrier height$")  # type: ignore unknown
+    else:
+        ax1.set_xlabel("Temperature/K")  # type: ignore unknown
     ax1.set_ylabel("Effective mass")  # type: ignore unknown
     ax1.set_title(  # type: ignore unknown
         "Plot of Effective mass against temperature for"
