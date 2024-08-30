@@ -70,12 +70,12 @@ if __name__ == "__main__":
     fig.show()
 
     # Gaussian + Exponential fitting
-    fig, ax = plot_isf_with_fit(isf, GaussianPlusExponentialMethod())
+    fig, ax = plot_isf_with_fit(isf, GaussianPlusExponentialMethod("Gaussian"))
     ax.set_title("Gaussian Plus Exponential")  # type: ignore bad types
     fig.show()
 
     # Double Gaussian fitting
-    fig, ax = plot_isf_with_fit(isf, DoubleGaussianMethod())
+    fig, ax = plot_isf_with_fit(isf, DoubleGaussianMethod("Fast"))
     ax.set_title("Double Gaussian")  # type: ignore bad types
     fig.show()
 

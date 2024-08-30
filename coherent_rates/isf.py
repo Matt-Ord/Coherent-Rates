@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Iterable, TypeVar, cast
 
 import numpy as np
 from scipy.constants import Boltzmann, hbar  # type: ignore library type
@@ -35,7 +35,6 @@ from surface_potential_analysis.potential.conversion import (
     convert_potential_to_position_basis,
 )
 from surface_potential_analysis.stacked_basis.conversion import (
-    stacked_basis_as_fundamental_momentum_basis,
     stacked_basis_as_fundamental_position_basis,
 )
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
@@ -61,6 +60,8 @@ from coherent_rates.scattering_operator import (
     get_periodic_x_operator_sparse,
 )
 from coherent_rates.system import (
+    PeriodicSystem,
+    PeriodicSystemConfig,
     get_coherent_state,
     get_hamiltonian,
     get_random_coherent_coordinates,
@@ -85,7 +86,6 @@ if TYPE_CHECKING:
         StateVectorList,
     )
 
-    from coherent_rates.system import PeriodicSystem, PeriodicSystemConfig
 
 _BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
 
@@ -427,7 +427,7 @@ def get_band_resolved_boltzmann_isf(
     }
 
 
-def get_coherent_isf(
+def get_coherent_isf(  # noqa: PLR0913
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _BT0,
@@ -543,11 +543,11 @@ def get_rate_against_momentum_data(
     fit_method: FitMethod[Any] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-) -> ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]]:
+) -> ValueList[MomentumBasis]:
     fit_method = GaussianMethod() if fit_method is None else fit_method
     nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
 
-    rates = np.zeros((fit_method.n_rates(), len(nk_points)), dtype=np.complex128)
+    rates = np.zeros(len(nk_points), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
     for i, direction in enumerate(nk_points):
         free_times = (
@@ -569,15 +569,170 @@ def get_rate_against_momentum_data(
             n_repeats=10,
         )
 
-        rates[:, i] = fit_method.get_rates_from_isf(isf)
+        rates[i] = fit_method.get_rate_from_isf(isf)
 
     dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
     return {
         "data": rates.ravel(),
-        "basis": TupleBasis(FundamentalBasis(fit_method.n_rates()), basis),
+        "basis": basis,
     }
+
+
+@timed
+def get_rate_against_condition_and_momentum_data(
+    conditions: list[tuple[PeriodicSystem, PeriodicSystemConfig]],
+    nk_points: list[tuple[int, ...]] | None = None,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+) -> ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]]:
+    fit_method = (
+        GaussianPlusExponentialMethod("Gaussian") if fit_method is None else fit_method
+    )
+    nk_points = (
+        _get_default_nk_points(conditions[0][1]) if nk_points is None else nk_points
+    )
+
+    data = np.zeros(
+        (len(conditions), len(nk_points)),
+        dtype=np.complex128,
+    )
+
+    rate_data = None
+    for j, (system, config) in enumerate(conditions):
+        rate_data = get_rate_against_momentum_data(
+            system,
+            config,
+            fit_method=fit_method,
+            nk_points=nk_points,
+        )
+        data[j, :] = rate_data["data"]
+
+    if rate_data is None:
+        msg = "Must have at least one rate!"
+        raise ValueError(msg)
+
+    return {
+        "data": data.ravel(),
+        "basis": TupleBasis(
+            FundamentalBasis(len(conditions)),
+            rate_data["basis"],
+        ),
+    }
+
+
+def calculate_effective_mass_from_gradient(
+    temperature: float,
+    gradient: float,
+) -> float:
+    return Boltzmann * temperature / (gradient**2)
+
+
+@dataclass
+class RateAgainstMomentumFitData:
+    """Stores data from linear fit with calculated effective mass."""
+
+    gradient: float
+    intercept: float
+
+
+def get_rate_against_momentum_linear_fit(
+    values: ValueList[MomentumBasis],
+) -> RateAgainstMomentumFitData:
+    k_points = values["basis"].k_points
+    rates = np.real(values["data"])
+    fit = cast(
+        np.ndarray[Any, np.dtype[np.float64]],
+        np.polynomial.Polynomial.fit(  # type: ignore bad library type
+            k_points,
+            rates,
+            deg=[1],
+            domain=(0, np.max(k_points)),
+            window=(0, np.max(k_points)),
+        ).coef,
+    )
+    return RateAgainstMomentumFitData(fit[1], fit[0])
+
+
+def get_effective_mass_data_from_rate_momentum(
+    data: ValueList[MomentumBasis],
+    temperature: float,
+) -> float:
+    return calculate_effective_mass_from_gradient(
+        temperature,
+        get_rate_against_momentum_linear_fit(data).gradient,
+    )
+
+
+def get_effective_mass_data(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
+) -> float:
+    rate_data = get_rate_against_momentum_data(
+        system,
+        config,
+        fit_method=fit_method,
+        nk_points=nk_points,
+        times=times,
+    )
+
+    return get_effective_mass_data_from_rate_momentum(rate_data, config.temperature)
+
+
+SimulationCondition = tuple[PeriodicSystem, PeriodicSystemConfig, str]
+
+
+@timed
+def get_effective_mass_against_condition_data(
+    conditions: list[SimulationCondition],
+    nk_points: list[tuple[int, ...]] | None = None,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+) -> ValueList[FundamentalBasis[int]]:
+    n_conditions = len(conditions)
+    data = np.zeros(
+        (n_conditions),
+        dtype=np.complex128,
+    )
+
+    for j, (system, config, _) in enumerate(conditions):
+        data[j] = get_effective_mass_data(
+            system,
+            config,
+            fit_method=fit_method,
+            nk_points=nk_points,
+        )
+
+    return {
+        "data": data.ravel(),
+        "basis": FundamentalBasis(len(conditions)),
+    }
+
+
+def get_conditions_at_mass(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    masses: Iterable[float],
+) -> list[SimulationCondition]:
+    return [(system.with_mass(mass), config, f"{mass} Kg") for mass in masses]
+
+
+def get_conditions_at_temperatures(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    temperatures: Iterable[float],
+) -> list[SimulationCondition]:
+    conditions = list[SimulationCondition]()
+    for temperature in temperatures:
+        config_i = copy.copy(config)
+        config_i.temperature = temperature
+        conditions.append((system, config_i, f"{temperature} K"))
+    return conditions
 
 
 def _get_scattered_energy_change(
@@ -660,135 +815,3 @@ def get_scattered_energy_change_against_k(
     k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
     basis = MomentumBasis(k_points)
     return {"data": energy_change, "basis": basis}
-
-
-def calculate_effective_mass_from_gradient(
-    config: PeriodicSystemConfig,
-    gradient: float,
-) -> float:
-    return Boltzmann * config.temperature / (gradient * gradient)
-
-
-@dataclass
-class RateAgainstMomentumFitData:
-    """_Stores data from linear fit with calculated effective mass."""
-
-    gradient: float
-    intercept: float
-
-
-def get_rate_against_momentum_linear_fit(
-    values: ValueList[MomentumBasis],
-) -> RateAgainstMomentumFitData:
-    k_points = values["basis"].k_points
-    rates = values["data"]
-    gradient, intercept = np.polyfit(k_points, rates, 1)
-    return RateAgainstMomentumFitData(gradient, intercept)
-
-
-@timed
-def get_rate_against_temperature_and_momentum_data(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    *,
-    fit_method: FitMethod[Any] | None = None,
-    temperatures: list[float] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-) -> ValueList[
-    TupleBasis[TupleBasis[FundamentalBasis[int], FundamentalBasis[int]], MomentumBasis]
-]:
-    config1 = copy.copy(config)
-    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
-    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
-    temperatures = (
-        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
-    )
-
-    n_rates = fit_method.n_rates()
-    n_temperatures = len(temperatures)
-    data = np.zeros(
-        (n_rates, n_temperatures, len(nk_points)),
-        dtype=np.complex128,
-    )
-
-    for j, temperature in enumerate(temperatures):
-        config1.temperature = temperature
-        rate_data = get_rate_against_momentum_data(
-            system,
-            config1,
-            fit_method=fit_method,
-            nk_points=nk_points,
-        )["data"]
-        rate_data = rate_data.reshape(n_rates, -1)
-        data[:, j, :] = rate_data
-
-    basis = stacked_basis_as_fundamental_momentum_basis(
-        system.get_potential(config.shape, config.resolution)["basis"],
-    )
-    dk_stacked = BasisUtil(basis).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore einsum
-    basis = MomentumBasis(k_points)
-
-    return {
-        "data": data.ravel(),
-        "basis": TupleBasis(
-            TupleBasis(
-                FundamentalBasis(n_rates),
-                FundamentalBasis(n_temperatures),
-            ),
-            basis,
-        ),
-    }
-
-
-@timed
-def get_rate_against_mass_and_momentum_data(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    *,
-    fit_method: FitMethod[Any] | None = None,
-    masses: list[float] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-) -> ValueList[
-    TupleBasis[TupleBasis[FundamentalBasis[int], FundamentalBasis[int]], MomentumBasis]
-]:
-    fit_method = GaussianPlusExponentialMethod() if fit_method is None else fit_method
-    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
-    masses = [(1 + 5 * i) * system.mass for i in range(5)] if masses is None else masses
-    system1 = copy.copy(system)
-
-    n_rates = fit_method.n_rates()
-    n_masses = len(masses)
-    data = np.zeros(
-        (n_rates, n_masses, len(nk_points)),
-        dtype=np.complex128,
-    )
-
-    for j, mass in enumerate(masses):
-        system1.mass = mass
-        rate_data = get_rate_against_momentum_data(
-            system1,
-            config,
-            fit_method=fit_method,
-            nk_points=nk_points,
-        )["data"]
-        rate_data = rate_data.reshape(n_rates, -1)
-        data[:, j, :] = rate_data
-
-    basis = stacked_basis_as_fundamental_momentum_basis(
-        system.get_potential(config.shape, config.resolution)["basis"],
-    )
-    dk_stacked = BasisUtil(basis).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore einsum
-    basis = MomentumBasis(k_points)
-
-    return {
-        "data": data.ravel(),
-        "basis": TupleBasis(
-            TupleBasis(
-                FundamentalBasis(n_rates),
-                FundamentalBasis(n_masses),
-            ),
-            basis,
-        ),
-    }

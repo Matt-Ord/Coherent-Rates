@@ -1,8 +1,8 @@
 from surface_potential_analysis.state_vector.state_vector_list import get_state_vector
 
 from coherent_rates.plot import (
-    plot_occupation_against_energy_comparison_mass,
-    plot_occupation_against_energy_comparison_temperature,
+    plot_occupation_against_energy_change_comparison_mass,
+    plot_occupation_against_energy_change_comparison_temperature,
     plot_scattered_energy_change_state,
     plot_thermal_scattered_energy_change_comparison,
 )
@@ -16,12 +16,17 @@ if __name__ == "__main__":
     config = PeriodicSystemConfig((20,), (50,), temperature=155)
     system = HYDROGEN_NICKEL_SYSTEM_1D
 
-    plot_occupation_against_energy_comparison_temperature(system, config, 5000, (50,))
+    plot_occupation_against_energy_change_comparison_temperature(
+        system,
+        config,
+        (155, 5000),
+        (50,),
+    )
 
     config = PeriodicSystemConfig((20,), (50,), temperature=155)
 
     # Shows that scattered energy is lower for a larger initial mass
-    plot_occupation_against_energy_comparison_mass(system, config, 3, (50,))
+    plot_occupation_against_energy_change_comparison_mass(system, config, 3, (50,))
 
     system = HYDROGEN_NICKEL_SYSTEM_1D
 

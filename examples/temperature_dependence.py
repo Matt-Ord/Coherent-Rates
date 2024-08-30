@@ -1,8 +1,10 @@
+import numpy as np
+
 from coherent_rates.plot import (
-    plot_rate_against_mass_and_momentum,
-    plot_rate_against_temperature_and_momentum,
-    plot_rate_against_temperature_barrier_energy_and_momentum,
-    plot_rate_against_temperature_mass_and_momentum,
+    plot_barrier_temperature,
+    plot_effective_mass_against_mass,
+    plot_effective_mass_against_temperature,
+    plot_effective_mass_against_temperature_comparison,
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
@@ -14,37 +16,42 @@ if __name__ == "__main__":
     system = SODIUM_COPPER_BRIDGE_SYSTEM_1D
 
     nk_points = [(50,), (75,), (100,), (125,), (150,), (175,), (200,)]
-    temperatures = [(10.0 + 50 * i) for i in range(5)]
-    r = [0.1, 0.5, 1, 5, 10]
-    masses = [i * system.mass for i in r]
-    barrier_energies = [i * system.barrier_energy for i in r]
 
-    plot_rate_against_mass_and_momentum(
+    masses = np.array([0.1, 0.5, 1, 5, 10]) * system.mass
+    plot_effective_mass_against_mass(
         system,
         config,
         masses=masses,
         nk_points=nk_points,
     )
 
-    plot_rate_against_temperature_and_momentum(
+    temperatures = np.array([(10.0 + 50 * i) for i in range(5)])
+    (fig, ax, line), _ = plot_effective_mass_against_temperature(
         system,
         config,
         temperatures=temperatures,
         nk_points=nk_points,
     )
+    plot_barrier_temperature(system.barrier_energy, ax=ax)
+    fig.show()
+    input()
 
-    plot_rate_against_temperature_mass_and_momentum(
-        system,
+    systems = [(system.with_mass(mass), f"{mass}") for mass in masses]
+    plot_effective_mass_against_temperature_comparison(
+        systems,
         config,
         temperatures=temperatures,
-        masses=masses,
         nk_points=nk_points,
     )
 
-    plot_rate_against_temperature_barrier_energy_and_momentum(
-        system,
+    barrier_energies = np.array([0.1, 0.5, 1, 5, 10]) * system.barrier_energy
+    systems = [
+        (system.with_barrier_energy(barrier_energy), f"{barrier_energy}")
+        for barrier_energy in barrier_energies
+    ]
+    plot_effective_mass_against_temperature_comparison(
+        systems,
         config,
         temperatures=temperatures,
-        barrier_energies=barrier_energies,
         nk_points=nk_points,
     )

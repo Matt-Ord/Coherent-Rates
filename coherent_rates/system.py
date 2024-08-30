@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from copy import copy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
@@ -206,6 +207,16 @@ class PeriodicSystem:
     lattice_constant: float
     mass: float
 
+    def with_mass(self: Self, mass: float) -> Self:
+        copied = copy(self)
+        copied.mass = mass
+        return copied
+
+    def with_barrier_energy(self: Self, barrier_energy: float) -> Self:
+        copied = copy(self)
+        copied.barrier_energy = barrier_energy
+        return copied
+
     def __hash__(self: Self) -> int:
         h = hashlib.sha256(usedforsecurity=False)
         h.update(self.id.encode())
@@ -233,6 +244,13 @@ class PeriodicSystem:
         interpolated = _get_interpolated_potential(potential, resolution)
 
         return _get_extrapolated_potential(interpolated, shape)
+
+    def get_potential_basis(
+        self: Self,
+        shape: tuple[int, ...],
+        resolution: tuple[int, ...],
+    ) -> StackedBasisWithVolumeLike[Any, Any, Any]:
+        return self.get_potential(shape, resolution)["basis"]
 
 
 class FreeSystem(PeriodicSystem):
@@ -475,7 +493,7 @@ def get_coherent_state(
         )
     )
     # stores distance from x0
-    distance = np.linalg.norm(np.einsum("ji,jk->ik", nx, dx_stacked), axis=1)
+    distance = np.linalg.norm(np.einsum("ji,jk->ik", nx, dx_stacked), axis=1)  # type: ignore unknown
 
     # i k.(x - x')
     dk = tuple(n / f for (n, f) in zip(k_0, basis_x.shape))
@@ -507,8 +525,8 @@ def get_thermal_occupation_k(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
-    potential = system.get_potential(config.shape, config.resolution)
-    k_basis = stacked_basis_as_fundamental_momentum_basis(potential["basis"])
+    basis = system.get_potential_basis(config.shape, config.resolution)
+    k_basis = stacked_basis_as_fundamental_momentum_basis(basis)
     util = BasisUtil(k_basis)
     k_distance = np.linalg.norm(util.fundamental_stacked_k_points, axis=0)
     k_probability = np.abs(
@@ -524,18 +542,20 @@ def get_random_coherent_coordinates(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    potential = convert_potential_to_position_basis(
-        system.get_potential(config.shape, config.resolution),
+    basis = stacked_basis_as_fundamental_position_basis(
+        system.get_potential_basis(config.shape, config.resolution),
     )
-    basis = potential["basis"]
     util = BasisUtil(basis)
+
+    rng = np.random.default_rng()
+
     # position probabilities
     x_probability_normalized = get_thermal_occupation_x(system, config)
-    x_index = np.random.choice(util.nx_points, p=x_probability_normalized)
+    x_index = rng.choice(util.nx_points, p=x_probability_normalized)
     x0 = cast(tuple[int, ...], util.get_stacked_index(x_index))
 
     # momentum probabilities
     k_probability_normalized = get_thermal_occupation_k(system, config)
-    k_index = np.random.choice(util.nx_points, p=k_probability_normalized)
+    k_index = rng.choice(util.nx_points, p=k_probability_normalized)
     k0 = cast(tuple[int, ...], util.get_stacked_index(k_index))
     return (x0, k0)

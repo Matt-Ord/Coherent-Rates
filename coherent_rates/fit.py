@@ -4,7 +4,7 @@ import functools
 import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Generic, Self, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Generic, Literal, Self, TypeVar, cast
 
 import numpy as np
 from scipy.constants import Boltzmann  # type: ignore library type
@@ -33,12 +33,11 @@ class FitMethod(ABC, Generic[T]):
     def __hash__(self: Self) -> int:
         ...
 
-    @classmethod
     @abstractmethod
-    def get_rates_from_fit(
-        cls: type[Self],
+    def get_rate_from_fit(
+        self: Self,
         fit: T,
-    ) -> tuple[float, ...]:
+    ) -> float:
         ...
 
     @staticmethod
@@ -74,9 +73,8 @@ class FitMethod(ABC, Generic[T]):
     def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
         ...
 
-    @staticmethod
     @abstractmethod
-    def get_rate_labels() -> tuple[str, ...]:
+    def get_rate_label(self: Self) -> str:
         ...
 
     @abstractmethod
@@ -107,12 +105,12 @@ class FitMethod(ABC, Generic[T]):
 
         return self._fit_from_params(dt.item(), *parameters)
 
-    def get_rates_from_isf(
+    def get_rate_from_isf(
         self: Self,
         data: ValueList[_BT0],
-    ) -> tuple[float, ...]:
+    ) -> float:
         fit = self.get_fit_from_isf(data)
-        return self.get_rates_from_fit(fit)
+        return self.get_rate_from_fit(fit)
 
     @classmethod
     def get_fitted_data(
@@ -133,10 +131,6 @@ class FitMethod(ABC, Generic[T]):
     @classmethod
     def n_params(cls: type[Self]) -> int:
         return len(cls._fit_param_initial_guess())
-
-    @classmethod
-    def n_rates(cls: type[Self]) -> int:
-        return len(cls.get_rate_labels())
 
 
 def _truncate_value_list(
@@ -220,16 +214,14 @@ class GaussianMethod(FitMethod[GaussianParameters]):
 
         return super().get_fit_from_isf(truncated)
 
-    @classmethod
-    def get_rates_from_fit(
-        cls: type[Self],
+    def get_rate_from_fit(
+        self: Self,
         fit: GaussianParameters,
-    ) -> tuple[float,]:
-        return (1 / fit.width,)
+    ) -> float:
+        return 1 / fit.width
 
-    @staticmethod
-    def get_rate_labels() -> tuple[str]:
-        return ("Gaussian",)
+    def get_rate_label(self: Self) -> str:
+        return "Gaussian"
 
     def get_fit_time(
         self: Self,
@@ -242,6 +234,10 @@ class GaussianMethod(FitMethod[GaussianParameters]):
 
 class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameters]]):
     """Fit the data to a double Gaussian."""
+
+    def __init__(self: Self, ty: Literal["Fast", "Slow"]) -> None:  # noqa: D107
+        self._ty = ty
+        super().__init__()
 
     def __hash__(self: Self) -> int:
         h = hashlib.sha256(usedforsecurity=False)
@@ -285,19 +281,18 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, -np.inf, 0, -np.inf], [1, np.inf, 1, np.inf])
 
-    @classmethod
-    def get_rates_from_fit(
-        cls: type[Self],
+    def get_rate_from_fit(
+        self: Self,
         fit: tuple[GaussianParameters, GaussianParameters],
-    ) -> tuple[float, float]:
+    ) -> float:
         return (
-            max(1 / fit[0].width, 1 / fit[1].width),
-            min(1 / fit[0].width, 1 / fit[1].width),
+            max(1 / fit[0].width, 1 / fit[1].width)
+            if self._ty == "Fast"
+            else min(1 / fit[0].width, 1 / fit[1].width)
         )
 
-    @staticmethod
-    def get_rate_labels() -> tuple[str, str]:
-        return ("Fast gaussian", "Slow gaussian")
+    def get_rate_label(self: Self) -> str:
+        return "Fast gaussian" if self._ty == "Fast" else "Slow gaussian"
 
     def get_fit_time(
         self: Self,
@@ -353,16 +348,14 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
     def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
         return [1, 1]
 
-    @classmethod
-    def get_rates_from_fit(
-        cls: type[Self],
+    def get_rate_from_fit(
+        self: Self,
         fit: ExponentialParameters,
-    ) -> tuple[float,]:
-        return (1 / fit.time_constant,)
+    ) -> float:
+        return 1 / fit.time_constant
 
-    @staticmethod
-    def get_rate_labels() -> tuple[str]:
-        return ("Exponential",)
+    def get_rate_label(self: Self) -> str:
+        return "Exponential"
 
     def get_fit_time(
         self: Self,
@@ -381,6 +374,10 @@ class GaussianPlusExponentialMethod(
     FitMethod[tuple[GaussianParameters, ExponentialParameters]],
 ):
     """Fit the data to a gaussian plus an exponential."""
+
+    def __init__(self: Self, ty: Literal["Gaussian", "Exponential"]) -> None:  # noqa: D107
+        self._ty = ty
+        super().__init__()
 
     def __hash__(self: Self) -> int:
         h = hashlib.sha256(usedforsecurity=False)
@@ -425,16 +422,14 @@ class GaussianPlusExponentialMethod(
     def _fit_param_initial_guess(cls: type[Self]) -> list[float]:
         return [0.5, 1, 0.5, 1]
 
-    @classmethod
-    def get_rates_from_fit(
-        cls: type[Self],
+    def get_rate_from_fit(
+        self: Self,
         fit: tuple[GaussianParameters, ExponentialParameters],
-    ) -> tuple[float, float]:
-        return (1 / fit[0].width, 1 / fit[1].time_constant)
+    ) -> float:
+        return 1 / fit[0].width if self._ty == "Gaussian" else 1 / fit[1].time_constant
 
-    @staticmethod
-    def get_rate_labels() -> tuple[str, str]:
-        return ("Gaussian", "Exponential")
+    def get_rate_label(self: Self) -> str:
+        return "Gaussian" if self._ty == "Gaussian" else "Exponential"
 
     def get_fit_time(
         self: Self,

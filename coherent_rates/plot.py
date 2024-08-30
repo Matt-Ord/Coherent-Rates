@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import copy
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterable, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Iterable, Sequence, TypeVar, cast
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -45,6 +43,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 )
 from surface_potential_analysis.util.plot import Scale, get_figure, plot_data_1d
 from surface_potential_analysis.util.squared_scale import SquaredScale
+from surface_potential_analysis.util.util import Measure
 from surface_potential_analysis.wavepacket.plot import (
     get_wavepacket_effective_mass,
     plot_occupation_against_band,
@@ -56,25 +55,25 @@ from surface_potential_analysis.wavepacket.plot import (
 
 from coherent_rates.fit import GaussianMethod
 from coherent_rates.isf import (
+    SimulationCondition,
     get_analytical_isf,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
     get_boltzmann_state_from_hamiltonian,
+    get_conditions_at_mass,
+    get_conditions_at_temperatures,
+    get_effective_mass_against_condition_data,
     get_free_particle_time,
     get_isf_pair_states,
     get_random_boltzmann_state,
-    get_rate_against_mass_and_momentum_data,
     get_rate_against_momentum_data,
     get_rate_against_momentum_linear_fit,
-    get_rate_against_temperature_and_momentum_data,
     get_scattered_energy_change_against_k,
     get_thermal_scattered_energy_change_against_k,
-    get_value_list_at_idx,
 )
 from coherent_rates.system import (
     FreeSystem,
     PeriodicSystem,
-    PeriodicSystem1d,
     PeriodicSystem2d,
     PeriodicSystemConfig,
     get_bloch_wavefunctions,
@@ -93,12 +92,10 @@ if TYPE_CHECKING:
     from surface_potential_analysis.basis.stacked_basis import (
         StackedBasisLike,
         StackedBasisWithVolumeLike,
-        TupleBasis,
     )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
     from surface_potential_analysis.types import SingleIndexLike
-    from surface_potential_analysis.util.util import Measure
     from surface_potential_analysis.wavepacket.wavepacket import (
         BlochWavefunctionListWithEigenvaluesList,
     )
@@ -112,7 +109,7 @@ if TYPE_CHECKING:
 
 
 def plot_system_eigenstates_1d(
-    system: PeriodicSystem1d,
+    system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> None:
     """Plot the potential against position."""
@@ -272,7 +269,7 @@ def plot_system_eigenstates_2d(
 
 
 def plot_system_evolution_1d(
-    system: PeriodicSystem1d,
+    system: PeriodicSystem,
     config: PeriodicSystemConfig,
     initial_state: StateVector[_B0],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
@@ -434,32 +431,21 @@ def plot_free_isf(
     )
     analytical_isf = get_analytical_isf(system, config, times, direction)
 
-    fig, ax, line = plot_value_list_against_time(isf)
-    line.set_label("Simulated")
-    fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax)
-    line.set_label("Analytical")
-    line.set_linestyle("--")
-    ax.set_title("Free ISF (abs)")  # type: ignore library type
-    ax.legend()  # type: ignore library type
-    fig.show()
+    measures = list[Measure](["real", "imag", "abs"])
+    for measure in measures:
+        fig, ax, line = plot_value_list_against_time(isf)
+        line.set_label("Simulated")
+        fig, ax, line = plot_value_list_against_time(
+            analytical_isf,
+            ax=ax,
+            measure=measure,
+        )
+        line.set_label("Analytical")
+        line.set_linestyle("--")
+        ax.set_title(f"Free ISF ({measure})")  # type: ignore library type
+        ax.legend()  # type: ignore library type
+        fig.show()
 
-    fig, ax, line = plot_value_list_against_time(isf, measure="real")
-    line.set_label("Simulated")
-    fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax, measure="real")
-    line.set_label("Analytical")
-    line.set_linestyle("--")
-    ax.set_title("Free ISF (real)")  # type: ignore library type
-    ax.legend()  # type: ignore library type
-    fig.show()
-
-    fig, ax, line = plot_value_list_against_time(isf, measure="imag")
-    line.set_label("Simulated")
-    fig, ax, line = plot_value_list_against_time(analytical_isf, ax=ax, measure="imag")
-    line.set_label("Analytical")
-    line.set_linestyle("--")
-    ax.set_title("Free ISF (imag)")  # type: ignore library type
-    ax.legend()  # type: ignore library type
-    fig.show()
     input()
 
 
@@ -490,39 +476,6 @@ def plot_band_resolved_boltzmann_isf(
     input()
 
 
-def _calculate_effective_mass_from_gradient(
-    temperature: float,
-    gradient: float,
-) -> float:
-    return Boltzmann * temperature / (gradient**2)
-
-
-@dataclass
-class _RateAgainstMomentumFitData:
-    """_Stores data from linear fit with calculated effective mass."""
-
-    gradient: float
-    intercept: float
-
-
-def _get_rate_against_momentum_linear_fit(
-    values: ValueList[MomentumBasis],
-) -> _RateAgainstMomentumFitData:
-    k_points = values["basis"].k_points
-    rates = np.real(values["data"])
-    fit = cast(
-        np.ndarray[Any, np.dtype[np.float64]],
-        np.polynomial.Polynomial.fit(  # type: ignore bad library type
-            k_points,
-            rates,
-            deg=[1],
-            domain=(0, np.max(k_points)),
-            window=(0, np.max(k_points)),
-        ).coef,
-    )
-    return _RateAgainstMomentumFitData(fit[1], fit[0])
-
-
 def _plot_rate_against_momentum(
     data: ValueList[MomentumBasis],
     *,
@@ -546,14 +499,15 @@ def _plot_rate_against_momentum(
     return fig, ax, line
 
 
-def plot_rate_against_momentum(
+def plot_rate_against_momentum(  # noqa: PLR0913
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
     nk_points: list[tuple[int, ...]] | None = None,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
-) -> None:
+    ax: Axes | None = None,
+) -> tuple[Figure, Axes, Line2D]:
     fit_method = GaussianMethod() if fit_method is None else fit_method
     data = get_rate_against_momentum_data(
         system,
@@ -562,28 +516,16 @@ def plot_rate_against_momentum(
         nk_points=nk_points,
         times=times,
     )
-    fig, ax = get_figure(None)
 
-    for i in range(fit_method.n_rates()):
-        list_data = get_value_list_at_idx(data, i)
-        _, _, line = _plot_rate_against_momentum(list_data, ax=ax)
-        line.set_label(fit_method.get_rate_labels()[i])
-
-        print(  # noqa: T201
-            f"Mass, {fit_method.get_rate_labels()[i]} =",
-            _calculate_effective_mass_from_gradient(
-                config.temperature,
-                get_rate_against_momentum_linear_fit(list_data).gradient,
-            ),
-        )
+    fig, ax, line = _plot_rate_against_momentum(data, ax=ax)
+    line.set_label(fit_method.get_rate_label())
 
     ax.set_ylim(0, ax.get_ylim()[1])
     ax.set_xlim(0, ax.get_xlim()[1])
     ax.legend()  # type: ignore library type
     ax.set_title("Plot of rate against delta k")  # type: ignore library type
 
-    fig.show()
-    input()
+    return (fig, ax, line)
 
 
 def plot_rate_against_momentum_comparison(
@@ -595,52 +537,187 @@ def plot_rate_against_momentum_comparison(
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
 ) -> None:
     fit_method = GaussianMethod() if fit_method is None else fit_method
-    data = get_rate_against_momentum_data(
+
+    fig, ax = get_figure(None)
+
+    _, _, line = plot_rate_against_momentum(
         system,
         config,
         fit_method=fit_method,
         nk_points=nk_points,
+        ax=ax,
         times=times,
     )
-    free_system = FreeSystem(system)
-    free_data = get_rate_against_momentum_data(
-        free_system,
+    line.set_label(f"Bound system, {fit_method.get_rate_label()}")
+
+    _, _, line = plot_rate_against_momentum(
+        FreeSystem(system),
         config,
         fit_method=fit_method,
         nk_points=nk_points,
+        ax=ax,
         times=times,
     )
-    fig, ax = get_figure(None)
+    line.set_label(f"Free system, {fit_method.get_rate_label()}")
 
-    for i in range(fit_method.n_rates()):
-        list_data = get_value_list_at_idx(data, i)
-        _, _, line = _plot_rate_against_momentum(list_data, ax=ax)
-        line.set_label(f"Bound system, {fit_method.get_rate_labels()[i]}")
-
-        free_list_data = get_value_list_at_idx(free_data, i)
-        _, _, line = _plot_rate_against_momentum(free_list_data, ax=ax)
-        line.set_label(f"Free system, {fit_method.get_rate_labels()[i]}")
-
-        print(  # noqa: T201
-            f"Bound mass, {fit_method.get_rate_labels()[i]} =",
-            _calculate_effective_mass_from_gradient(
-                config.temperature,
-                _get_rate_against_momentum_linear_fit(list_data).gradient,
-            ),
-        )
-        print(  # noqa: T201
-            f"Free mass, {fit_method.get_rate_labels()[i]} =",
-            _calculate_effective_mass_from_gradient(
-                config.temperature,
-                _get_rate_against_momentum_linear_fit(free_list_data).gradient,
-            ),
-        )
-
-    ax.set_ylim(0, ax.get_ylim()[1])
-    ax.set_xlim(0, ax.get_xlim()[1])
     ax.legend()  # type: ignore library type
     ax.set_title("plot of rate against delta k, comparing to a free particle")  # type: ignore library type
 
+    fig.show()
+    input()
+
+
+def plot_effective_mass_against_condition(
+    conditions: list[tuple[PeriodicSystem, PeriodicSystemConfig, str]],
+    x_values: np.ndarray[Any, np.dtype[np.float64]],
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+    temperature_ax: Axes | None = None,
+) -> tuple[tuple[Figure, Axes, Line2D], tuple[Figure, Axes]]:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+
+    momentum_plot = get_figure(None)
+    for x_value, (system, config, _) in zip(x_values, conditions):
+        _, _, line = plot_rate_against_momentum(
+            system,
+            config,
+            nk_points=nk_points,
+            fit_method=fit_method,
+            ax=momentum_plot[1],
+        )
+        line.set_label(f"{x_value}")
+    momentum_plot[1].legend()  # type: ignore unknown
+
+    data = get_effective_mass_against_condition_data(
+        conditions,
+        fit_method=fit_method,
+        nk_points=nk_points,
+    )
+
+    fig, temperature_ax, line = plot_data_1d(
+        data["data"],
+        x_values,
+        ax=temperature_ax,
+    )
+    temperature_ax.set_ylabel("Effective Mass /kg")  # type: ignore unknown
+    return ((fig, temperature_ax, line), momentum_plot)
+
+
+def plot_effective_mass_against_mass(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    masses: np.ndarray[Any, np.dtype[np.float64]] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    masses = (
+        np.array([(1 + 5 * i) * system.mass for i in range(5)])
+        if masses is None
+        else masses
+    )
+
+    conditions = get_conditions_at_mass(system, config, masses)
+
+    mass_plot, momentum_plot = plot_effective_mass_against_condition(
+        conditions,
+        masses,
+        fit_method=fit_method,
+        nk_points=nk_points,
+    )
+
+    momentum_plot[0].show()
+
+    fig, ax, line = mass_plot
+
+    ax.set_xlabel("Mass /kg")  # type: ignore unknown
+    ax.set_title(  # type: ignore unknown
+        "Plot of Effective mass against mass for"
+        f" {fit_method.get_rate_label()} rate",
+    )
+    _, _, line = plot_data_1d(masses, masses, ax=ax)
+    line.set_color("black")
+    line.set_linestyle("--")
+    fig.show()
+    input()
+
+
+def plot_effective_mass_against_temperature(  # noqa: PLR0913
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    *,
+    temperatures: np.ndarray[Any, np.dtype[np.float64]] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+    fit_method: FitMethod[Any] | None = None,
+    temperature_ax: Axes | None = None,
+) -> tuple[tuple[Figure, Axes, Line2D], tuple[Figure, Axes]]:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    temperatures = (
+        np.array([(60 + 30 * i) for i in range(5)])
+        if temperatures is None
+        else temperatures
+    )
+
+    conditions = get_conditions_at_temperatures(system, config, temperatures)
+
+    temperature_plot, momentum_plot = plot_effective_mass_against_condition(
+        conditions,
+        temperatures,
+        fit_method=fit_method,
+        nk_points=nk_points,
+        temperature_ax=temperature_ax,
+    )
+
+    _, temperature_ax, _ = temperature_plot
+
+    temperature_ax.set_title(  # type: ignore unknown
+        "Plot of Effective mass against temperature for"
+        f" {fit_method.get_rate_label()} rate",
+    )
+    temperature_ax.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
+    temperature_ax.set_ylim(0, max(1.2 * system.mass, temperature_ax.get_ylim()[1]))
+    temperature_ax.set_xlabel("Temperature / k")  # type: ignore unknown
+
+    return temperature_plot, momentum_plot
+
+
+def plot_barrier_temperature(
+    barrier_energy: float,
+    *,
+    ax: Axes | None = None,
+) -> tuple[Figure, Axes, Line2D]:
+    fig, ax = get_figure(ax)
+
+    barrier_temperature = barrier_energy / Boltzmann
+    line = ax.axvline(barrier_temperature, ls="--")  # type: ignore unknown
+    line.set_label("Barrier Height")
+    return fig, ax, line
+
+
+def plot_effective_mass_against_temperature_comparison(
+    systems: Sequence[tuple[PeriodicSystem, str]],
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    temperatures: np.ndarray[Any, np.dtype[np.float64]] | None = None,
+    nk_points: list[tuple[int, ...]] | None = None,
+) -> None:
+    fig, ax = get_figure(None)
+
+    for system, label in systems:
+        (_, _, line), _ = plot_effective_mass_against_temperature(
+            system,
+            config,
+            fit_method=fit_method,
+            temperatures=temperatures,
+            nk_points=nk_points,
+            temperature_ax=ax,
+        )
+        line.set_label(label)
+
+    ax.legend()  # type: ignore unknown
     fig.show()
     input()
 
@@ -706,38 +783,55 @@ def plot_scattered_energy_change_state(
     input()
 
 
-def plot_occupation_against_energy_comparison_mass(
+def plot_occupation_against_energy_change_with_contition(
+    conditions: list[SimulationCondition],
+    direction: tuple[int, ...] | None = None,
+) -> tuple[Figure, Axes]:
+    rng = np.random.default_rng()
+
+    fig, ax = get_figure(None)
+
+    for system, config, label in conditions:
+        hamiltonian = get_hamiltonian(system, config)
+        phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
+
+        state = get_boltzmann_state_from_hamiltonian(
+            hamiltonian,
+            config.temperature,
+            phase,
+        )
+        operator = get_periodic_x_operator(state["basis"], direction)
+        scattered_state = apply_operator_to_state(operator, state)
+
+        fig, ax, line = plot_total_band_occupation_against_energy(
+            hamiltonian,
+            scattered_state,
+        )
+        line.set_label(label)
+
+    ax.legend()  # type: ignore library type
+    return fig, ax
+
+
+def plot_occupation_against_energy_change_comparison_mass(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     mass_ratio: float,
     direction: tuple[int, ...] | None = None,
 ) -> None:
-    hamiltonian = get_hamiltonian(system, config)
-    rng = np.random.default_rng()
-    phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
+    conditions = [
+        (system, config, "Normal Mass"),
+        (
+            system.with_mass(mass_ratio * system.mass),
+            config,
+            f"{mass_ratio}$\\times$ mass",
+        ),
+    ]
 
-    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
-    operator = get_periodic_x_operator(state["basis"], direction)
-    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
-
-    fig, ax, line = plot_total_band_occupation_against_energy(
-        hamiltonian,
-        scattered_state,
+    fig, ax = plot_occupation_against_energy_change_with_contition(
+        conditions,
+        direction,
     )
-    line.set_label("Normal mass")
-
-    system.mass = system.mass * mass_ratio
-    hamiltonian = get_hamiltonian(system, config)
-    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
-    operator = get_periodic_x_operator(state["basis"], direction)
-    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
-
-    fig, ax, line1 = plot_total_band_occupation_against_energy(
-        hamiltonian,
-        scattered_state,
-        ax=ax,
-    )
-    line1.set_label(f"{mass_ratio}$\\times$ mass")
 
     ax.axvline(system.barrier_energy, color="black", ls="--")  # type: ignore library type
 
@@ -748,39 +842,17 @@ def plot_occupation_against_energy_comparison_mass(
     input()
 
 
-def plot_occupation_against_energy_comparison_temperature(
+def plot_occupation_against_energy_change_comparison_temperature(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    temperature: float,
+    temperatures: tuple[float, float],
     direction: tuple[int, ...] | None = None,
 ) -> None:
-    hamiltonian = get_hamiltonian(system, config)
-    rng = np.random.default_rng()
-    phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
-
-    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
-    operator = get_periodic_x_operator(state["basis"], direction)
-    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
-
-    fig, ax, line = plot_total_band_occupation_against_energy(
-        hamiltonian,
-        scattered_state,
+    conditions = get_conditions_at_temperatures(system, config, temperatures)
+    fig, ax = plot_occupation_against_energy_change_with_contition(
+        conditions,
+        direction,
     )
-    line.set_label(f"T={config.temperature}")
-
-    config.temperature = temperature
-
-    hamiltonian = get_hamiltonian(system, config)
-    state = get_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature, phase)
-    operator = get_periodic_x_operator(state["basis"], direction)
-    scattered_state: StateVector[Any] = apply_operator_to_state(operator, state)
-
-    fig, ax, line1 = plot_total_band_occupation_against_energy(
-        hamiltonian,
-        scattered_state,
-        ax=ax,
-    )
-    line1.set_label(f"T={temperature}")
 
     ax.axvline(system.barrier_energy, color="black", ls="--")  # type: ignore library type
 
@@ -788,249 +860,4 @@ def plot_occupation_against_energy_comparison_temperature(
     ax.set_ylim(0)
     ax.legend()  # type: ignore library type
     fig.show()
-    input()
-
-
-def get_effective_masses(
-    data: ValueList[TupleBasis[_B0, MomentumBasis]],
-    temperatures: list[float],
-    *,
-    rate_index: int = 0,
-) -> np.ndarray[Any, Any]:
-    effective_masses = np.zeros(len(temperatures), dtype=np.complex128)
-    for i, temperature in enumerate(temperatures):
-        value = get_value_list_at_idx(data, rate_index + i)
-        effective_masses[i] = _calculate_effective_mass_from_gradient(
-            temperature,
-            _get_rate_against_momentum_linear_fit(value).gradient,
-        )
-    return effective_masses
-
-
-def plot_rate_against_temperature_and_momentum(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    *,
-    fit_method: FitMethod[Any] | None = None,
-    temperatures: list[float] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-) -> None:
-    fit_method = GaussianMethod() if fit_method is None else fit_method
-    temperatures = (
-        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
-    )
-    data = get_rate_against_temperature_and_momentum_data(
-        system,
-        config,
-        fit_method=fit_method,
-        temperatures=temperatures,
-        nk_points=nk_points,
-    )
-    for j in range(fit_method.n_rates()):
-        fig, ax = get_figure(None)
-
-        for i, temperature in enumerate(temperatures):
-            value = get_value_list_at_idx(data, j + i)
-            fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
-            line.set_label(f"T={temperature}K")
-        ax.legend()  # type: ignore unknown
-        ax.set_title(f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum")  # type: ignore unknown
-        fig.show()
-
-        effective_masses = get_effective_masses(data, temperatures, rate_index=j)
-        fig, ax, line = plot_data_1d(effective_masses, np.asarray(temperatures))
-        ax.set_xlabel("Temperature/K")  # type: ignore unknown
-        ax.set_ylabel("Effective mass/kg")  # type: ignore unknown
-        ax.set_title(  # type: ignore unknown
-            "Plot of Effective mass against temperature for"
-            f" {fit_method.get_rate_labels()[j]} rate",
-        )
-        barrier_temperature = system.barrier_energy / Boltzmann
-
-        ax.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
-        ax.axvline(barrier_temperature, color="black", ls="--")  # type: ignore unknown
-        fig.show()
-    input()
-
-
-def plot_rate_against_mass_and_momentum(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    *,
-    fit_method: FitMethod[Any] | None = None,
-    masses: list[float] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-) -> None:
-    fit_method = GaussianMethod() if fit_method is None else fit_method
-    masses = [(1 + 5 * i) * system.mass for i in range(5)] if masses is None else masses
-    data = get_rate_against_mass_and_momentum_data(
-        system,
-        config,
-        fit_method=fit_method,
-        masses=masses,
-        nk_points=nk_points,
-    )
-    for j in range(fit_method.n_rates()):
-        fig, ax = get_figure(None)
-
-        for i, mass in enumerate(masses):
-            value = get_value_list_at_idx(data, j + i)
-            fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
-            line.set_label(f"m={mass:.3e}kg")
-        ax.legend()  # type: ignore unknown
-        ax.set_title(f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum")  # type: ignore unknown
-        fig.show()
-
-        effective_masses = get_effective_masses(
-            data,
-            [config.temperature for _i in masses],
-            rate_index=j,
-        )
-        fig, ax, line = plot_data_1d(effective_masses, np.asarray(masses))
-        ax.set_xlabel("Mass/kg")  # type: ignore unknown
-        ax.set_ylabel("Effective mass/kg")  # type: ignore unknown
-        ax.set_title(  # type: ignore unknown
-            "Plot of Effective mass against mass for"
-            f" {fit_method.get_rate_labels()[j]} rate",
-        )
-        fig, ax, line = plot_data_1d(np.asarray(masses), np.asarray(masses), ax=ax)
-        line.set_color("black")
-        line.set_linestyle("--")
-        fig.show()
-    input()
-
-
-def plot_rate_against_temperature_mass_and_momentum(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    *,
-    fit_method: FitMethod[Any] | None = None,
-    temperatures: list[float] | None = None,
-    masses: list[float] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-) -> None:
-    fit_method = GaussianMethod() if fit_method is None else fit_method
-    temperatures = (
-        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
-    )
-    masses = [(1 + 5 * i) * system.mass for i in range(5)] if masses is None else masses
-    fig1, ax1 = get_figure(None)
-    system1 = copy.copy(system)
-    for mass in masses:
-        system1.mass = mass
-        data = get_rate_against_temperature_and_momentum_data(
-            system1,
-            config,
-            fit_method=fit_method,
-            temperatures=temperatures,
-            nk_points=nk_points,
-        )
-        for j in range(fit_method.n_rates()):
-            fig, ax = get_figure(None)
-
-            for i, temperature in enumerate(temperatures):
-                value = get_value_list_at_idx(data, j + i)
-                fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
-                line.set_label(f"T={temperature}K")
-            ax.legend()  # type: ignore unknown
-            ax.set_title(  # type: ignore unknown
-                f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum, mass {mass:.3e}kg",  # noqa: E501
-            )
-            fig.show()
-
-            effective_masses = get_effective_masses(data, temperatures, rate_index=j)
-            mass_ratios = np.divide(effective_masses, mass)
-            fig1, ax1, line1 = plot_data_1d(
-                mass_ratios,
-                np.asarray(temperatures),
-                ax=ax1,
-            )
-            line1.set_label(f"m={mass:.3e}kg")
-
-    barrier_temperature = system.barrier_energy / Boltzmann
-
-    ax1.axhline(1, color="black", ls="--")  # type: ignore unknown
-    ax1.axvline(barrier_temperature, color="black", ls="--")  # type: ignore unknown
-    ax1.set_xlabel("Temperature/K")  # type: ignore unknown
-    ax1.set_ylabel("Effective mass/mass")  # type: ignore unknown
-    ax1.set_title(  # type: ignore unknown
-        "Plot of Effective mass/mass against temperature for"
-        f" {fit_method.get_rate_labels()[j]} rate",
-    )
-
-    ax1.legend()  # type: ignore unknown
-    fig1.show()
-    input()
-
-
-def plot_rate_against_temperature_barrier_energy_and_momentum(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    *,
-    fit_method: FitMethod[Any] | None = None,
-    temperatures: list[float] | None = None,
-    barrier_energies: list[float] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-    normalized: bool = False,
-) -> None:
-    fit_method = GaussianMethod() if fit_method is None else fit_method
-    temperatures = (
-        [(60 + 30 * i) for i in range(5)] if temperatures is None else temperatures
-    )
-    barrier_energies = (
-        [(1 + 5 * i) * system.barrier_energy for i in range(5)]
-        if barrier_energies is None
-        else barrier_energies
-    )
-    fig1, ax1 = get_figure(None)
-    system1 = copy.copy(system)
-    for barrier_energy in barrier_energies:
-        system1.barrier_energy = barrier_energy
-        data = get_rate_against_temperature_and_momentum_data(
-            system1,
-            config,
-            fit_method=fit_method,
-            temperatures=temperatures,
-            nk_points=nk_points,
-        )
-        for j in range(fit_method.n_rates()):
-            fig, ax = get_figure(None)
-
-            for i, temperature in enumerate(temperatures):
-                value = get_value_list_at_idx(data, j + i)
-                fig, ax, line = _plot_rate_against_momentum(value, ax=ax)
-                line.set_label(f"T={temperature}K")
-            ax.legend()  # type: ignore unknown
-            ax.set_title(  # type: ignore unknown
-                f"Plot of {fit_method.get_rate_labels()[j]} rate against momentum, barrier energy = {barrier_energy:.3e}J",  # noqa: E501
-            )
-            fig.show()
-
-            effective_masses = get_effective_masses(data, temperatures, rate_index=j)
-            barrier_temperature = barrier_energy / Boltzmann
-            temperatures_norm = (
-                np.divide(temperatures, barrier_temperature)
-                if normalized
-                else np.asarray(temperatures)
-            )
-            fig1, ax1, line1 = plot_data_1d(
-                effective_masses,
-                temperatures_norm,
-                ax=ax1,
-            )
-            line1.set_label(f"{barrier_energy:.3e}J")
-
-    ax1.axhline(system.mass, color="black", ls="--")  # type: ignore unknown
-    if normalized:
-        ax1.set_xlabel("$k_{B}T/Barrier height$")  # type: ignore unknown
-    else:
-        ax1.set_xlabel("Temperature/K")  # type: ignore unknown
-    ax1.set_ylabel("Effective mass")  # type: ignore unknown
-    ax1.set_title(  # type: ignore unknown
-        "Plot of Effective mass against temperature for"
-        f" {fit_method.get_rate_labels()[j]} rate",
-    )
-
-    ax1.legend()  # type: ignore unknown
-    fig1.show()
     input()

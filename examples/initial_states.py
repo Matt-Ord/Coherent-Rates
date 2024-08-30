@@ -27,20 +27,20 @@ if __name__ == "__main__":
 
     boltzmann_state = get_random_boltzmann_state(system, config)
     fig, ax, line = plot_state_2d_x(boltzmann_state)
-    ax.set_title("Boltzmann state in real space")
+    ax.set_title("Boltzmann state in real space")  # type: ignore unknown
     fig.show()
     fig, ax, line = plot_state_2d_k(boltzmann_state)
-    ax.set_title("Boltzmann state in momentum space")
+    ax.set_title("Boltzmann state in momentum space")  # type: ignore unknown
     fig.show()
 
     sigma = system.lattice_constant / 10
 
     coherent_state = get_random_coherent_state(system, config, sigma)
     fig, ax, line = plot_state_2d_x(coherent_state)
-    ax.set_title("Coherent state in real space")
+    ax.set_title("Coherent state in real space")  # type: ignore unknown
     fig.show()
     fig, ax, line = plot_state_2d_k(coherent_state)
-    ax.set_title("Coherent state in momentum space")
+    ax.set_title("Coherent state in momentum space")  # type: ignore unknown
     fig.show()
 
     plot_system_evolution_2d(system, config, coherent_state, times)
@@ -54,11 +54,11 @@ if __name__ == "__main__":
     x_probability_normalized = get_thermal_occupation_x(system, config)
 
     fig, ax, line = plot_data_2d_x(basis, x_probability_normalized)
-    ax.set_title("probability distribution of initial position")
+    ax.set_title("probability distribution of initial position")  # type: ignore unknown
     fig.show()
 
     k_probability_normalized = get_thermal_occupation_k(system, config)
     fig, ax, line = plot_data_2d_k(k_basis, k_probability_normalized)
-    ax.set_title("probability distribution of initial momentum")
+    ax.set_title("probability distribution of initial momentum")  # type: ignore unknown
     fig.show()
     input()
