@@ -38,8 +38,8 @@ if __name__ == "__main__":
 
     fig, ax, line = plot_value_list_against_time(coherent_isf, measure="imag", ax=ax)
     line.set_label("imag")
-    ax.legend()
-    ax.set_title("Coherent state isf")
+    ax.legend()  # type: ignore unknown
+    ax.set_title("Coherent state isf")  # type: ignore unknown
     fig.show()
 
     # Compare 500 samples to 50 samples
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     )
     fig, ax, line = plot_value_list_against_time(isf_small, ax=ax)
     line.set_label(f"{n_repeats*2} runs")
-    ax.legend()
-    ax.set_title("Comparison of coherent ISF with a range of sample sizes")
+    ax.legend()  # type: ignore unknown
+    ax.set_title("Comparison of coherent ISF with a range of sample sizes")  # type: ignore unknown
     fig.show()
 
     # Plot the ISF for a set of random boltzmann states
@@ -71,8 +71,8 @@ if __name__ == "__main__":
 
     fig, ax, line = plot_value_list_against_time(boltzmann_isf, measure="imag", ax=ax)
     line.set_label("imag")
-    ax.legend()
-    ax.set_title("Boltzmann state isf")
+    ax.legend()  # type: ignore unknown
+    ax.set_title("Boltzmann state isf")  # type: ignore unknown
     fig.show()
 
     # Compare the boltzmann and coherent states
@@ -80,8 +80,8 @@ if __name__ == "__main__":
     line.set_label("coherent")
     fig, ax, line = plot_value_list_against_time(boltzmann_isf, ax=ax, measure="real")
     line.set_label("boltzmann")
-    ax.legend()
-    ax.set_title("isf comparison")
+    ax.legend()  # type: ignore unknown
+    ax.set_title("isf comparison")  # type: ignore unknown
     fig.show()
 
     input()
