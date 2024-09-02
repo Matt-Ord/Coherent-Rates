@@ -303,6 +303,23 @@ class PeriodicSystemConfig:
     resolution: tuple[int, ...]
     truncation: int | None = None
     temperature: float = field(default=150, kw_only=True)
+    scattered_energy_range: tuple[float, float] = field(
+        default=(-np.inf, np.inf),
+        kw_only=True,
+    )
+
+    def with_temperature(self: Self, temperature: float) -> Self:
+        copied = copy(self)
+        copied.temperature = temperature
+        return copied
+
+    def with_scattered_energy_range(
+        self: Self,
+        energy_range: tuple[float, float],
+    ) -> Self:
+        copied = copy(self)
+        copied.scattered_energy_range = energy_range
+        return copied
 
     @property
     def n_bands(self: Self) -> int:

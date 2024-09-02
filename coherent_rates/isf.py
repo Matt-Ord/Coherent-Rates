@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, TypeVar, cast
 
 import numpy as np
-from scipy.constants import Boltzmann, hbar  # type: ignore library type
+from scipy.constants import Boltzmann, electron_volt, hbar  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
     FundamentalPositionBasis,
@@ -57,7 +56,7 @@ from coherent_rates.scattering_operator import (
     SparseScatteringOperator,
     apply_scattering_operator_to_state,
     apply_scattering_operator_to_states,
-    get_periodic_x_operator_sparse,
+    get_instrument_biased_periodic_x,
 )
 from coherent_rates.system import (
     PeriodicSystem,
@@ -137,9 +136,10 @@ def get_isf_pair_states(
     StateVectorList[_BT0, StackedBasisWithVolumeLike[Any, Any, Any]],
 ]:
     hamiltonian = get_hamiltonian(system, config)
-    operator = get_periodic_x_operator_sparse(
-        hamiltonian["basis"][1],
+    operator = get_instrument_biased_periodic_x(
+        hamiltonian,
         direction=direction,
+        energy_range=config.scattered_energy_range,
     )
 
     return _get_isf_pair_states_from_hamiltonian(
@@ -226,9 +226,10 @@ def get_isf(
     direction: tuple[int, ...] | None = None,
 ) -> ValueList[_BT0]:
     hamiltonian = get_hamiltonian(system, config)
-    operator = get_periodic_x_operator_sparse(
-        hamiltonian["basis"][1],
+    operator = get_instrument_biased_periodic_x(
+        hamiltonian,
         direction=direction,
+        energy_range=config.scattered_energy_range,
     )
 
     return _get_isf_from_hamiltonian(hamiltonian, operator, initial_state, times)
@@ -287,7 +288,7 @@ def get_random_boltzmann_state(
 
 def _get_boltzmann_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_ESB0],
-    temperature: float,
+    config: PeriodicSystemConfig,
     times: _BT0,
     direction: tuple[int, ...] | None = None,
     *,
@@ -296,14 +297,15 @@ def _get_boltzmann_isf_from_hamiltonian(
     isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
     # Convert the operator to the hamiltonian basis
     # to prevent conversion in each repeat
-    operator = get_periodic_x_operator_sparse(
-        hamiltonian["basis"][1],
+    operator = get_instrument_biased_periodic_x(
+        hamiltonian,
         direction=direction,
+        energy_range=config.scattered_energy_range,
     )
     for i in range(n_repeats):
         state = _get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
-            temperature,
+            config.temperature,
         )
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
         isf_data[i, :] = data["data"]
@@ -362,7 +364,7 @@ def get_boltzmann_isf(
     hamiltonian = get_hamiltonian(system, config)
     return _get_boltzmann_isf_from_hamiltonian(
         hamiltonian,
-        config.temperature,
+        config,
         times,
         direction,
         n_repeats=n_repeats,
@@ -401,7 +403,11 @@ def get_band_resolved_boltzmann_isf(
 ) -> StatisticalValueList[TupleBasisLike[BasisLike[Any, Any], _BT0]]:
     hamiltonian = get_hamiltonian(system, config)  #
     bands = hamiltonian["basis"][0].wavefunctions["basis"][0][0]
-    operator = get_periodic_x_operator_sparse(hamiltonian["basis"][0], direction)
+    operator = get_instrument_biased_periodic_x(
+        hamiltonian,
+        direction=direction,
+        energy_range=config.scattered_energy_range,
+    )
 
     isf_data = np.zeros((n_repeats, bands.n * times.n), dtype=np.complex128)
 
@@ -457,9 +463,10 @@ def get_coherent_isf(  # noqa: PLR0913
     """
     sigma_0 = system.lattice_constant / 10 if sigma_0 is None else sigma_0
     hamiltonian = get_hamiltonian(system, config)
-    operator = get_periodic_x_operator_sparse(
-        hamiltonian["basis"][1],
+    operator = get_instrument_biased_periodic_x(
+        hamiltonian,
         direction=direction,
+        energy_range=config.scattered_energy_range,
     )
 
     isf_data = np.zeros((2 * n_repeats, times.n), dtype=np.complex128)
@@ -525,14 +532,14 @@ def _get_rate_against_momentum_data_path(
     )
 
 
-def get_value_list_at_idx(
-    values: ValueList[TupleBasis[_B0, MomentumBasis]],
-    index: int,
-) -> ValueList[MomentumBasis]:
-    basis = values["basis"][1]
-    full_data = values["data"].reshape((values["basis"][0].n, values["basis"][1].n))
-    data = full_data[index, :]
-    return {"basis": basis, "data": data}
+def get_scattered_momentum(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    directions: list[tuple[int, ...]],
+) -> np.ndarray[Any, np.dtype[np.float64]]:
+    basis = system.get_potential_basis(config.shape, config.resolution)
+    dk_stacked = BasisUtil(basis).fundamental_dk_stacked
+    return np.linalg.norm(np.einsum("ij,jk->ik", directions, dk_stacked), axis=1)  # type: ignore library type
 
 
 @npy_cached_dict(_get_rate_against_momentum_data_path, load_pickle=True)
@@ -563,7 +570,7 @@ def get_rate_against_momentum_data(
 
         isf = _get_boltzmann_isf_from_hamiltonian(
             hamiltonian,
-            config.temperature,
+            config,
             free_times,
             direction,
             n_repeats=10,
@@ -571,9 +578,7 @@ def get_rate_against_momentum_data(
 
         rates[i] = fit_method.get_rate_from_isf(isf)
 
-    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
-    basis = MomentumBasis(k_points)
+    basis = MomentumBasis(get_scattered_momentum(system, config, nk_points))
     return {
         "data": rates.ravel(),
         "basis": basis,
@@ -727,12 +732,26 @@ def get_conditions_at_temperatures(
     config: PeriodicSystemConfig,
     temperatures: Iterable[float],
 ) -> list[SimulationCondition]:
-    conditions = list[SimulationCondition]()
-    for temperature in temperatures:
-        config_i = copy.copy(config)
-        config_i.temperature = temperature
-        conditions.append((system, config_i, f"{temperature} K"))
-    return conditions
+    return [(system, config.with_temperature(t), f"{t} K") for t in temperatures]
+
+
+def _energy_to_mev(energy: float) -> float:
+    return energy * 10**3 / electron_volt
+
+
+def get_conditions_at_energy_range(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    scattered_energy_ranges: Iterable[float],
+) -> list[SimulationCondition]:
+    return [
+        (
+            system,
+            config.with_scattered_energy_range((-r, r)),
+            rf"$\pm$ {_energy_to_mev(r):.1f} meV",
+        )
+        for r in scattered_energy_ranges
+    ]
 
 
 def _get_scattered_energy_change(
@@ -788,9 +807,7 @@ def get_thermal_scattered_energy_change_against_k(
         energy_change[i] = np.average(data)
         standard_deviation[i] = np.std(data)
 
-    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
-    basis = MomentumBasis(k_points)
+    basis = MomentumBasis(get_scattered_momentum(system, config, nk_points))
     return {
         "data": energy_change,
         "basis": basis,
@@ -811,7 +828,5 @@ def get_scattered_energy_change_against_k(
     for i, k_point in enumerate(nk_points):
         energy_change[i] = _get_scattered_energy_change(hamiltonian, state, k_point)
 
-    dk_stacked = BasisUtil(hamiltonian["basis"][0]).dk_stacked
-    k_points = np.linalg.norm(np.einsum("ij,jk->ik", nk_points, dk_stacked), axis=1)  # type: ignore library type
-    basis = MomentumBasis(k_points)
+    basis = MomentumBasis(get_scattered_momentum(system, config, nk_points))
     return {"data": energy_change, "basis": basis}

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from surface_potential_analysis.basis.basis_like import BasisLike
     from surface_potential_analysis.basis.stacked_basis import TupleBasisLike
     from surface_potential_analysis.operator.operator import (
+        SingleBasisDiagonalOperator,
         SingleBasisOperator,
     )
     from surface_potential_analysis.state_vector.state_vector import StateVector
@@ -35,10 +36,7 @@ _B1_co = TypeVar("_B1_co", bound=BlochBasis[Any], covariant=True)
 
 
 class SparseScatteringOperator(TypedDict, Generic[_B0_co, _B1_co]):
-    """Represents a scattering operator in the bloch basis.
-
-    The
-    """
+    """Represents an operator in the (sparse) scattering operator basis."""
 
     basis: TupleBasisLike[_B0_co, _B1_co]
     """The original basis of the operator."""
@@ -193,14 +191,10 @@ def apply_scattering_operator_to_states(
 @timed
 def get_periodic_x_operator_sparse(
     basis: _B0_co,
-    direction: tuple[int, ...] | None,
+    direction: tuple[int, ...],
 ) -> SparseScatteringOperator[_B0_co, _B0_co]:
-    direction = tuple(1 for _ in range(basis.ndim)) if direction is None else direction
     band_basis = basis.wavefunctions["basis"][0][0]
     bloch_phase_basis = basis.wavefunctions["basis"][0][1]
-    bloch_wavefunction_basis = basis.wavefunctions["basis"][1]
-    shape = bloch_phase_basis.shape
-
     # band (out), band (in), bloch k
     out = np.zeros(
         (band_basis.n, band_basis.n, bloch_phase_basis.n),
@@ -220,13 +214,14 @@ def get_periodic_x_operator_sparse(
 
         # Direction in the wavefunction space
         # Not this is not the same for all idx_in, idx_out
+        bloch_wavefunction_basis = basis.wavefunctions["basis"][1]
         bloch_wavefunction_direction = tuple(
             (d - (out - in_)) // s
             for (d, in_, out, s) in zip(
                 direction,
                 nk_in,
                 nk_out,
-                shape,
+                bloch_phase_basis.shape,
                 strict=True,
             )
         )
@@ -248,3 +243,61 @@ def get_periodic_x_operator_sparse(
         "data": out.ravel(),
         "direction": direction,
     }
+
+
+@timed
+def get_energy_change_operator_sparse(
+    hamiltonian: SingleBasisDiagonalOperator[_B0],
+    direction: tuple[int, ...],
+) -> SparseScatteringOperator[_B0, _B0]:
+    basis = hamiltonian["basis"][0]
+    band_basis = basis.wavefunctions["basis"][0][0]
+    bloch_phase_basis = basis.wavefunctions["basis"][0][1]
+    # band (out), band (in), bloch k
+    out = np.zeros(
+        (band_basis.n, band_basis.n, bloch_phase_basis.n),
+        dtype=np.complex128,
+    )
+    stacked_nk_points = BasisUtil(bloch_phase_basis).stacked_nk_points
+
+    eigenvalues = hamiltonian["data"].reshape(band_basis.n, bloch_phase_basis.n)
+    for i, nk_in in enumerate(zip(*stacked_nk_points)):
+        # Find the bloch k of the scattered state
+        util = BasisUtil(basis.wavefunctions["basis"][0][1])
+        j = util.get_flat_index(
+            tuple(j + s for (j, s) in zip(nk_in, direction)),
+            mode="wrap",
+        )
+
+        out[:, :, i] = eigenvalues[:, np.newaxis, j] - eigenvalues[np.newaxis, :, i]
+
+    return {
+        "basis": hamiltonian["basis"],
+        "data": out.ravel(),
+        "direction": direction,
+    }
+
+
+@timed
+def get_instrument_biased_periodic_x(
+    hamiltonian: SingleBasisDiagonalOperator[_B0],
+    direction: tuple[int, ...] | None,
+    energy_range: tuple[float, float],
+) -> SparseScatteringOperator[_B0, _B0]:
+    direction = (
+        tuple(1 for _ in range(hamiltonian["basis"][0].ndim))
+        if direction is None
+        else direction
+    )
+
+    periodic_x = get_periodic_x_operator_sparse(hamiltonian["basis"][0], direction)
+
+    scattered_energy = get_energy_change_operator_sparse(hamiltonian, direction)
+    min_energy, max_energy = energy_range
+    mask = np.logical_and(
+        min_energy < scattered_energy["data"],
+        scattered_energy["data"] < max_energy,
+    )
+    periodic_x["data"][np.logical_not(mask)] = 0
+
+    return periodic_x
