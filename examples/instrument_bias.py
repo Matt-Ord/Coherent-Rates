@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 import numpy as np
-from scipy.constants import electron_volt
+from scipy.constants import electron_volt  # type: ignore bad library
 
 from coherent_rates.fit import FitMethod, GaussianMethodWithOffset
 from coherent_rates.isf import (
