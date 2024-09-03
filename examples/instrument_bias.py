@@ -1,52 +1,50 @@
+from __future__ import annotations
+
+from typing import Any, Iterable
+
 import numpy as np
 from scipy.constants import electron_volt
-from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.state_vector.plot_value_list import (
-    plot_value_list_against_frequency,
-    plot_value_list_against_time,
-)
-from surface_potential_analysis.util.plot import get_figure
 
+from coherent_rates.fit import FitMethod, GaussianMethodWithOffset
 from coherent_rates.isf import (
-    get_boltzmann_isf,
     get_conditions_at_energy_range,
+)
+from coherent_rates.plot import (
+    plot_isf_fit_for_conditions,
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
+    PeriodicSystem,
     PeriodicSystemConfig,
 )
 
-if __name__ == "__main__":
-    config = PeriodicSystemConfig((50,), (100,), 50, temperature=150)
-    system = SODIUM_COPPER_BRIDGE_SYSTEM_1D
 
-    times = EvenlySpacedTimeBasis(201, 1, -100, 5e-11)
-    direction = (10,)
-    n_repeats = 20
-
-    fig0, ax0 = get_figure(None)
-    fig1, ax1 = get_figure(None)
-    energies = np.arange(0.5, 2.5, 0.5) * 0.001 * electron_volt
-    for s, c, label in get_conditions_at_energy_range(
+def _test_instrument_bias(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    energies: Iterable[float],
+    *,
+    fit_method: FitMethod[Any] | None = None,
+) -> None:
+    fit_method = GaussianMethodWithOffset() if fit_method is None else fit_method
+    conditions = get_conditions_at_energy_range(
         system,
         config,
         energies,
-    ):
-        data = get_boltzmann_isf(
-            s,
-            c,
-            times,
-            direction,
-            n_repeats=n_repeats,
-        )
+    )
+    plot_isf_fit_for_conditions(conditions, fit_method=fit_method)
 
-        _, _, line = plot_value_list_against_time(data, ax=ax0)
-        line.set_label(label)
-        _, _, line = plot_value_list_against_frequency(data, ax=ax1)
-        line.set_label(label)
 
-    ax0.legend()
-    fig0.show()
-    ax1.legend()
-    fig1.show()
-    input()
+if __name__ == "__main__":
+    config = PeriodicSystemConfig(
+        (100,),
+        (100,),
+        truncation=50,
+        direction=(5,),
+        temperature=155,
+    )
+    system = SODIUM_COPPER_BRIDGE_SYSTEM_1D
+
+    energies = np.array([2, 5, 10, 15, 20, np.inf]) * 0.001 * electron_volt
+
+    _test_instrument_bias(system, config, energies)

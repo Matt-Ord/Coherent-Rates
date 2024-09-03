@@ -245,7 +245,6 @@ def get_periodic_x_operator_sparse(
     }
 
 
-@timed
 def get_energy_change_operator_sparse(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
     direction: tuple[int, ...],
@@ -278,18 +277,11 @@ def get_energy_change_operator_sparse(
     }
 
 
-@timed
 def get_instrument_biased_periodic_x(
     hamiltonian: SingleBasisDiagonalOperator[_B0],
-    direction: tuple[int, ...] | None,
+    direction: tuple[int, ...],
     energy_range: tuple[float, float],
 ) -> SparseScatteringOperator[_B0, _B0]:
-    direction = (
-        tuple(1 for _ in range(hamiltonian["basis"][0].ndim))
-        if direction is None
-        else direction
-    )
-
     periodic_x = get_periodic_x_operator_sparse(hamiltonian["basis"][0], direction)
 
     scattered_energy = get_energy_change_operator_sparse(hamiltonian, direction)

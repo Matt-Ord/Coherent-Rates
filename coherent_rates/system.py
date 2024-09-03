@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Iterator, Literal, Self, TypeVar, cast
 
 import numpy as np
 from scipy.constants import (  # type: ignore bad types
+    Avogadro,
     Boltzmann,
     electron_volt,
     hbar,
@@ -81,7 +82,7 @@ def _get_fundamental_potential_1d(
     system: PeriodicSystem1d,
 ) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[3]]]]:
     """Generate potential for a periodic 1D system."""
-    delta_x = np.sqrt(3) * system.lattice_constant / 2
+    delta_x = system.lattice_constant
     axis = FundamentalTransformedPositionBasis1d[Literal[3]](np.array([delta_x]), 3)
     vector = 0.25 * system.barrier_energy * np.array([2, -1, -1]) * np.sqrt(3)
     return {"basis": TupleBasis(axis), "data": vector}
@@ -110,7 +111,7 @@ def _get_fundamental_potential_2d(
     # (x0,x1) -> (x0,-x1)
     # We therefore occupy G = +-K0, +-K1, +-(K0+K1) equally
     data = [[0, 1, 1], [1, 1, 0], [1, 0, 1]]
-    vector = 0.5 * system.barrier_energy * np.array(data) / np.sqrt(9)
+    vector = system.barrier_energy * np.array(data) / np.sqrt(9)
     return {
         "basis": TupleBasis(
             FundamentalTransformedPositionBasis[Literal[3], Literal[2]](
@@ -295,6 +296,9 @@ class PeriodicSystem2d(PeriodicSystem):
         return _get_fundamental_potential_2d(self)
 
 
+_DEFAULT_DIRECTION = ()
+
+
 @dataclass
 class PeriodicSystemConfig:
     """Configure the simlation-specific detail of the system."""
@@ -307,10 +311,35 @@ class PeriodicSystemConfig:
         default=(-np.inf, np.inf),
         kw_only=True,
     )
+    direction: tuple[int, ...] = field(default=_DEFAULT_DIRECTION, kw_only=True)
+
+    def __post_init__(self: Self) -> None:
+        if self.direction is _DEFAULT_DIRECTION:
+            self.direction = tuple(0 for _ in self.shape)
+
+    def with_direction(self: Self, direction: tuple[int, ...]) -> Self:
+        copied = copy(self)
+        copied.direction = direction
+        return copied
 
     def with_temperature(self: Self, temperature: float) -> Self:
         copied = copy(self)
         copied.temperature = temperature
+        return copied
+
+    def with_resolution(self: Self, resolution: tuple[int, ...]) -> Self:
+        copied = copy(self)
+        copied.resolution = resolution
+        return copied
+
+    def with_shape(self: Self, shape: tuple[int, ...]) -> Self:
+        copied = copy(self)
+        copied.shape = shape
+        return copied
+
+    def with_truncation(self: Self, truncation: int | None) -> Self:
+        copied = copy(self)
+        copied.truncation = truncation
         return copied
 
     def with_scattered_energy_range(
@@ -341,7 +370,16 @@ class PeriodicSystemConfig:
         )
 
     def __hash__(self: Self) -> int:
-        return hash((self.shape, self.resolution, self.n_bands, self.temperature))
+        return hash(
+            (
+                self.shape,
+                self.resolution,
+                self.n_bands,
+                self.temperature,
+                self.direction,
+                self.scattered_energy_range,
+            ),
+        )
 
 
 HYDROGEN_NICKEL_SYSTEM_1D = PeriodicSystem1d(
@@ -358,38 +396,47 @@ HYDROGEN_NICKEL_SYSTEM_2D = PeriodicSystem2d(
     mass=1.67e-27,
 )
 
+
+# see <https://www.sciencedirect.com/science/article/pii/S0039602897000897>
+SODIUM_COPPER_BRIDGE_ENERGY = (416.78 - 414.24) * 1e3 / Avogadro
+SODIUM_COPPER_SYSTEM_2D = PeriodicSystem2d(
+    id="NaCu",
+    barrier_energy=9 * SODIUM_COPPER_BRIDGE_ENERGY,
+    lattice_constant=2.558e-10,
+    mass=3.8175458e-26,
+)
 SODIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
     id="NaCu",
     barrier_energy=55e-3 * electron_volt,
-    lattice_constant=3.615e-10,
+    lattice_constant=(1 / np.sqrt(3)) * SODIUM_COPPER_SYSTEM_2D.lattice_constant,
     mass=3.8175458e-26,
 )
-
 SODIUM_COPPER_BRIDGE_SYSTEM_1D = PeriodicSystem1d(
     id="NaCuB",
-    barrier_energy=12e-3 * electron_volt,
-    lattice_constant=3.615e-10,
+    barrier_energy=SODIUM_COPPER_BRIDGE_ENERGY,
+    lattice_constant=(1 / np.sqrt(3)) * SODIUM_COPPER_SYSTEM_2D.lattice_constant,
     mass=3.8175458e-26,
 )
 
-SODIUM_COPPER_SYSTEM_2D = PeriodicSystem2d(
-    id="NaCu",
-    barrier_energy=55e-3 * electron_volt,
-    lattice_constant=3.615e-10,
-    mass=3.8175458e-26,
-)
 
-LITHIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
+# see <https://www.sciencedirect.com/science/article/pii/S0039602897000897>
+LITHIUM_COPPER_BRIDGE_ENERGY = (477.16 - 471.41) * 1e3 / Avogadro
+LITHIUM_COPPER_SYSTEM_2D = PeriodicSystem2d(
     id="LiCu",
-    barrier_energy=45e-3 * electron_volt,
+    barrier_energy=9 * LITHIUM_COPPER_BRIDGE_ENERGY,
     lattice_constant=3.615e-10,
     mass=1.152414898e-26,
 )
-
-LITHIUM_COPPER_SYSTEM_2D = PeriodicSystem2d(
+LITHIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
     id="LiCu",
     barrier_energy=45e-3 * electron_volt,
-    lattice_constant=3.615e-10,
+    lattice_constant=(1 / np.sqrt(3)) * LITHIUM_COPPER_SYSTEM_2D.lattice_constant,
+    mass=1.152414898e-26,
+)
+LITHIUM_COPPER_BRIDGE_SYSTEM_1D = PeriodicSystem1d(
+    id="LiCuB",
+    barrier_energy=LITHIUM_COPPER_BRIDGE_ENERGY,
+    lattice_constant=(1 / np.sqrt(3)) * LITHIUM_COPPER_SYSTEM_2D.lattice_constant,
     mass=1.152414898e-26,
 )
 

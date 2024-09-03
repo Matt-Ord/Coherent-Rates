@@ -20,7 +20,6 @@ from surface_potential_analysis.basis.stacked_basis import (
 )
 from surface_potential_analysis.basis.time_basis_like import (
     BasisWithTimeLike,
-    EvenlySpacedTimeBasis,
 )
 from surface_potential_analysis.basis.util import BasisUtil
 from surface_potential_analysis.dynamics.schrodinger.solve import (
@@ -32,9 +31,6 @@ from surface_potential_analysis.operator.operator import (
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_position_basis,
-)
-from surface_potential_analysis.stacked_basis.conversion import (
-    stacked_basis_as_fundamental_position_basis,
 )
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
@@ -51,7 +47,11 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 from surface_potential_analysis.util.decorators import npy_cached_dict, timed
 from surface_potential_analysis.wavepacket.get_eigenstate import BlochBasis
 
-from coherent_rates.fit import FitMethod, GaussianMethod, GaussianPlusExponentialMethod
+from coherent_rates.fit import (
+    FitMethod,
+    GaussianMethod,
+    GaussianPlusExponentialMethod,
+)
 from coherent_rates.scattering_operator import (
     SparseScatteringOperator,
     apply_scattering_operator_to_state,
@@ -130,7 +130,6 @@ def get_isf_pair_states(
     config: PeriodicSystemConfig,
     initial_state: StateVector[_B1],
     times: _BT0,
-    direction: tuple[int, ...] | None = None,
 ) -> tuple[
     StateVectorList[_BT0, StackedBasisWithVolumeLike[Any, Any, Any]],
     StateVectorList[_BT0, StackedBasisWithVolumeLike[Any, Any, Any]],
@@ -138,7 +137,7 @@ def get_isf_pair_states(
     hamiltonian = get_hamiltonian(system, config)
     operator = get_instrument_biased_periodic_x(
         hamiltonian,
-        direction=direction,
+        direction=config.direction,
         energy_range=config.scattered_energy_range,
     )
 
@@ -223,12 +222,11 @@ def get_isf(
     config: PeriodicSystemConfig,
     initial_state: StateVector[_B1],
     times: _BT0,
-    direction: tuple[int, ...] | None = None,
 ) -> ValueList[_BT0]:
     hamiltonian = get_hamiltonian(system, config)
     operator = get_instrument_biased_periodic_x(
         hamiltonian,
-        direction=direction,
+        direction=config.direction,
         energy_range=config.scattered_energy_range,
     )
 
@@ -290,7 +288,6 @@ def _get_boltzmann_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_ESB0],
     config: PeriodicSystemConfig,
     times: _BT0,
-    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[_BT0]:
@@ -299,7 +296,7 @@ def _get_boltzmann_isf_from_hamiltonian(
     # to prevent conversion in each repeat
     operator = get_instrument_biased_periodic_x(
         hamiltonian,
-        direction=direction,
+        direction=config.direction,
         energy_range=config.scattered_energy_range,
     )
     for i in range(n_repeats):
@@ -351,22 +348,32 @@ def get_random_coherent_state(
     return get_coherent_state(basis, x0, k0, sigma_0)
 
 
+def _get_boltzmann_isf_data_path(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    times: Any,  # noqa: ANN401
+    *,
+    n_repeats: int = 10,
+) -> Path:
+    return Path(
+        f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.npz",
+    )
+
+
+@npy_cached_dict(_get_boltzmann_isf_data_path, load_pickle=True)
 @timed
 def get_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _BT0,
-    direction: tuple[int, ...] | None = None,
     *,
-    n_repeats: int = 1,
+    n_repeats: int = 10,
 ) -> StatisticalValueList[_BT0]:
-    direction = tuple(1 for _ in config.shape) if direction is None else direction
     hamiltonian = get_hamiltonian(system, config)
     return _get_boltzmann_isf_from_hamiltonian(
         hamiltonian,
         config,
         times,
-        direction,
         n_repeats=n_repeats,
     )
 
@@ -375,14 +382,8 @@ def get_analytical_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _BT0,
-    direction: tuple[int, ...] | None = None,
 ) -> ValueList[_BT0]:
-    direction = tuple(1 for _ in config.shape) if direction is None else direction
-    basis = stacked_basis_as_fundamental_position_basis(
-        system.get_potential(config.shape, config.resolution)["basis"],
-    )
-    dk_stacked = BasisUtil(basis).dk_stacked
-    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))  # type: ignore library type
+    k = get_scattered_momentum(system, config, [config.direction])[0]
 
     # ISF(k, t) = exp(-(kTt^2 - i hbar t)* energy)
     energy = k**2 / (2 * system.mass)
@@ -397,7 +398,6 @@ def get_band_resolved_boltzmann_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _BT0,
-    direction: tuple[int, ...] | None = None,
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[TupleBasisLike[BasisLike[Any, Any], _BT0]]:
@@ -405,7 +405,7 @@ def get_band_resolved_boltzmann_isf(
     bands = hamiltonian["basis"][0].wavefunctions["basis"][0][0]
     operator = get_instrument_biased_periodic_x(
         hamiltonian,
-        direction=direction,
+        direction=config.direction,
         energy_range=config.scattered_energy_range,
     )
 
@@ -433,12 +433,11 @@ def get_band_resolved_boltzmann_isf(
     }
 
 
-def get_coherent_isf(  # noqa: PLR0913
+def get_coherent_isf(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     times: _BT0,
     *,
-    direction: tuple[int, ...] | None = None,
     n_repeats: int = 10,
     sigma_0: float | None = None,
 ) -> StatisticalValueList[_BT0]:
@@ -465,7 +464,7 @@ def get_coherent_isf(  # noqa: PLR0913
     hamiltonian = get_hamiltonian(system, config)
     operator = get_instrument_biased_periodic_x(
         hamiltonian,
-        direction=direction,
+        direction=config.direction,
         energy_range=config.scattered_energy_range,
     )
 
@@ -491,22 +490,17 @@ def get_coherent_isf(  # noqa: PLR0913
     }
 
 
-def get_free_particle_time(
+def get_scattered_momentum(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    direction: tuple[int, ...] | None = None,
-) -> float:
-    direction = tuple(1 for _ in config.shape) if direction is None else direction
-    basis = system.get_potential(config.shape, config.resolution)["basis"]
-    dk_stacked = BasisUtil(basis).dk_stacked
-
-    k = np.linalg.norm(np.einsum("i,ij->j", direction, dk_stacked))  # type: ignore library type
-    k = np.linalg.norm(dk_stacked[0]) if k == 0 else k
-
-    return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
+    directions: list[tuple[int, ...]],
+) -> np.ndarray[Any, np.dtype[np.float64]]:
+    basis = system.get_potential_basis(config.shape, config.resolution)
+    dk_stacked = BasisUtil(basis).fundamental_dk_stacked
+    return np.linalg.norm(np.einsum("ij,jk->ik", directions, dk_stacked), axis=1)  # type: ignore library type
 
 
-def _get_default_nk_points(config: PeriodicSystemConfig) -> list[tuple[int, ...]]:
+def _get_default_directions(config: PeriodicSystemConfig) -> list[tuple[int, ...]]:
     return list(
         zip(
             *tuple(
@@ -522,24 +516,41 @@ def _get_rate_against_momentum_data_path(
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,  # noqa: ARG001
+    directions: list[tuple[int, ...]] | None = None,
 ) -> Path:
     fit_method = GaussianMethod() if fit_method is None else fit_method
-    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    directions = _get_default_directions(config) if directions is None else directions
     return Path(
-        f"data/{hash((system, config))}.{hash(nk_points[0])}.{hash(fit_method)}.npz",
+        f"data/{hash((system, config))}.{hash(fit_method)}"
+        f".{hash((directions[0], directions[-1], len(directions)))}.npz",
     )
 
 
-def get_scattered_momentum(
+def _get_boltzmann_rate_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[_ESB0],
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
-    directions: list[tuple[int, ...]],
-) -> np.ndarray[Any, np.dtype[np.float64]]:
-    basis = system.get_potential_basis(config.shape, config.resolution)
-    dk_stacked = BasisUtil(basis).fundamental_dk_stacked
-    return np.linalg.norm(np.einsum("ij,jk->ik", directions, dk_stacked), axis=1)  # type: ignore library type
+    fit_method: FitMethod[Any],
+    *,
+    n_repeats: int = 10,
+) -> float:
+    times = fit_method.get_fit_times(
+        system=system,
+        config=config,
+    )
+
+    isf = _get_boltzmann_isf_from_hamiltonian(
+        hamiltonian,
+        config,
+        times,
+        n_repeats=n_repeats,
+    )
+
+    return fit_method.get_rate_from_isf(
+        isf,
+        system=system,
+        config=config,
+    )
 
 
 @npy_cached_dict(_get_rate_against_momentum_data_path, load_pickle=True)
@@ -548,37 +559,23 @@ def get_rate_against_momentum_data(
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
 ) -> ValueList[MomentumBasis]:
     fit_method = GaussianMethod() if fit_method is None else fit_method
-    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    directions = _get_default_directions(config) if directions is None else directions
 
-    rates = np.zeros(len(nk_points), dtype=np.complex128)
+    rates = np.zeros(len(directions), dtype=np.complex128)
     hamiltonian = get_hamiltonian(system, config)
-    for i, direction in enumerate(nk_points):
-        free_times = (
-            EvenlySpacedTimeBasis(
-                100,
-                1,
-                0,
-                fit_method.get_fit_time(system, config, direction),
-            )
-            if times is None
-            else times
-        )
-
-        isf = _get_boltzmann_isf_from_hamiltonian(
+    for i, direction in enumerate(directions):
+        rates[i] = _get_boltzmann_rate_from_hamiltonian(
             hamiltonian,
-            config,
-            free_times,
-            direction,
+            system=system,
+            config=config.with_direction(direction),
+            fit_method=fit_method,
             n_repeats=10,
         )
 
-        rates[i] = fit_method.get_rate_from_isf(isf)
-
-    basis = MomentumBasis(get_scattered_momentum(system, config, nk_points))
+    basis = MomentumBasis(get_scattered_momentum(system, config, directions))
     return {
         "data": rates.ravel(),
         "basis": basis,
@@ -588,19 +585,19 @@ def get_rate_against_momentum_data(
 @timed
 def get_rate_against_condition_and_momentum_data(
     conditions: list[tuple[PeriodicSystem, PeriodicSystemConfig]],
-    nk_points: list[tuple[int, ...]] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
     *,
     fit_method: FitMethod[Any] | None = None,
 ) -> ValueList[TupleBasis[FundamentalBasis[int], MomentumBasis]]:
     fit_method = (
         GaussianPlusExponentialMethod("Gaussian") if fit_method is None else fit_method
     )
-    nk_points = (
-        _get_default_nk_points(conditions[0][1]) if nk_points is None else nk_points
+    directions = (
+        _get_default_directions(conditions[0][1]) if directions is None else directions
     )
 
     data = np.zeros(
-        (len(conditions), len(nk_points)),
+        (len(conditions), len(directions)),
         dtype=np.complex128,
     )
 
@@ -610,7 +607,7 @@ def get_rate_against_condition_and_momentum_data(
             system,
             config,
             fit_method=fit_method,
-            nk_points=nk_points,
+            directions=directions,
         )
         data[j, :] = rate_data["data"]
 
@@ -652,7 +649,7 @@ def get_rate_against_momentum_linear_fit(
         np.polynomial.Polynomial.fit(  # type: ignore bad library type
             k_points,
             rates,
-            deg=[1],
+            deg=[0, 1],
             domain=(0, np.max(k_points)),
             window=(0, np.max(k_points)),
         ).coef,
@@ -675,15 +672,13 @@ def get_effective_mass_data(
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
-    nk_points: list[tuple[int, ...]] | None = None,
-    times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
 ) -> float:
     rate_data = get_rate_against_momentum_data(
         system,
         config,
         fit_method=fit_method,
-        nk_points=nk_points,
-        times=times,
+        directions=directions,
     )
 
     return get_effective_mass_data_from_rate_momentum(rate_data, config.temperature)
@@ -695,7 +690,7 @@ SimulationCondition = tuple[PeriodicSystem, PeriodicSystemConfig, str]
 @timed
 def get_effective_mass_against_condition_data(
     conditions: list[SimulationCondition],
-    nk_points: list[tuple[int, ...]] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
     *,
     fit_method: FitMethod[Any] | None = None,
 ) -> ValueList[FundamentalBasis[int]]:
@@ -710,7 +705,7 @@ def get_effective_mass_against_condition_data(
             system,
             config,
             fit_method=fit_method,
-            nk_points=nk_points,
+            directions=directions,
         )
 
     return {
@@ -719,12 +714,36 @@ def get_effective_mass_against_condition_data(
     }
 
 
+def get_conditions_for_config(
+    systems: Iterable[tuple[PeriodicSystem, str]],
+    config: PeriodicSystemConfig,
+) -> list[SimulationCondition]:
+    return [(system, config, label) for (system, label) in systems]
+
+
 def get_conditions_at_mass(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     masses: Iterable[float],
 ) -> list[SimulationCondition]:
-    return [(system.with_mass(mass), config, f"{mass} Kg") for mass in masses]
+    return get_conditions_for_config(
+        ((system.with_mass(mass), f"{mass} Kg") for mass in masses),
+        config,
+    )
+
+
+def get_conditions_at_barrier_energy(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    barrier_energies: Iterable[float],
+) -> list[SimulationCondition]:
+    return get_conditions_for_config(
+        (
+            (system.with_barrier_energy(energy), f"{energy}")
+            for energy in barrier_energies
+        ),
+        config,
+    )
 
 
 def get_conditions_at_temperatures(
@@ -733,6 +752,17 @@ def get_conditions_at_temperatures(
     temperatures: Iterable[float],
 ) -> list[SimulationCondition]:
     return [(system, config.with_temperature(t), f"{t} K") for t in temperatures]
+
+
+def get_conditions_at_directions(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    directions: Iterable[tuple[int, ...]],
+) -> list[SimulationCondition]:
+    return [
+        (system, config.with_direction(d), f"({', '.join(str(x) for x in d) },)")
+        for d in directions
+    ]
 
 
 def _energy_to_mev(energy: float) -> float:
@@ -790,14 +820,14 @@ def get_thermal_scattered_energy_change_against_k(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
-    nk_points: list[tuple[int, ...]] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
     n_repeats: int = 10,
 ) -> StatisticalValueList[MomentumBasis]:
-    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    directions = _get_default_directions(config) if directions is None else directions
     hamiltonian = get_hamiltonian(system, config)
-    energy_change = np.zeros(len(nk_points), dtype=np.complex128)
-    standard_deviation = np.zeros(len(nk_points), dtype=np.float64)
-    for i, k_point in enumerate(nk_points):
+    energy_change = np.zeros(len(directions), dtype=np.complex128)
+    standard_deviation = np.zeros(len(directions), dtype=np.float64)
+    for i, k_point in enumerate(directions):
         data = _get_thermal_scattered_energy_change(
             hamiltonian,
             config.temperature,
@@ -807,7 +837,7 @@ def get_thermal_scattered_energy_change_against_k(
         energy_change[i] = np.average(data)
         standard_deviation[i] = np.std(data)
 
-    basis = MomentumBasis(get_scattered_momentum(system, config, nk_points))
+    basis = MomentumBasis(get_scattered_momentum(system, config, directions))
     return {
         "data": energy_change,
         "basis": basis,
@@ -820,13 +850,13 @@ def get_scattered_energy_change_against_k(
     config: PeriodicSystemConfig,
     state: StateVector[Any],
     *,
-    nk_points: list[tuple[int, ...]] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
 ) -> ValueList[MomentumBasis]:
-    nk_points = _get_default_nk_points(config) if nk_points is None else nk_points
+    directions = _get_default_directions(config) if directions is None else directions
     hamiltonian = get_hamiltonian(system, config)
-    energy_change = np.zeros(len(nk_points), dtype=np.complex128)
-    for i, k_point in enumerate(nk_points):
+    energy_change = np.zeros(len(directions), dtype=np.complex128)
+    for i, k_point in enumerate(directions):
         energy_change[i] = _get_scattered_energy_change(hamiltonian, state, k_point)
 
-    basis = MomentumBasis(get_scattered_momentum(system, config, nk_points))
+    basis = MomentumBasis(get_scattered_momentum(system, config, directions))
     return {"data": energy_change, "basis": basis}
