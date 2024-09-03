@@ -14,12 +14,10 @@ from coherent_rates.system import (
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((20,), (50,), temperature=155)
+    config = PeriodicSystemConfig((20,), (50,), temperature=155, direction=(2,))
     system = SODIUM_COPPER_SYSTEM_1D
     system = FreeSystem(system)
     times = EvenlySpacedTimeBasis(151, 1, -75, 5e-11)
-
-    direction = (2,)
 
     # Plot the ISF for a set of random coherent states
     n_repeats = 500
@@ -27,7 +25,6 @@ if __name__ == "__main__":
         system,
         config,
         times,
-        direction=direction,
         n_repeats=n_repeats,
     )
     fig, ax, line = plot_value_list_against_time(coherent_isf)
@@ -52,7 +49,6 @@ if __name__ == "__main__":
         system,
         config,
         times,
-        direction=direction,
         n_repeats=n_repeats,
     )
     fig, ax, line = plot_value_list_against_time(isf_small, ax=ax)
@@ -62,7 +58,7 @@ if __name__ == "__main__":
     fig.show()
 
     # Plot the ISF for a set of random boltzmann states
-    boltzmann_isf = get_boltzmann_isf(system, config, times, direction, n_repeats=50)
+    boltzmann_isf = get_boltzmann_isf(system, config, times, n_repeats=50)
     fig, ax, line = plot_value_list_against_time(boltzmann_isf)
     line.set_label("abs")
 
