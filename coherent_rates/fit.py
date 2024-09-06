@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from surface_potential_analysis.state_vector.eigenstate_list import ValueList
 
     from coherent_rates.config import PeriodicSystemConfig
-    from coherent_rates.system import PeriodicSystem
+    from coherent_rates.system import System
 
 
 _BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
@@ -42,7 +42,7 @@ T = TypeVar("T")
 class FitInfo(TypedDict):
     """Information about an ISF calculation."""
 
-    system: PeriodicSystem
+    system: System
     config: PeriodicSystemConfig
 
 
@@ -180,7 +180,7 @@ def _truncate_value_list(
 
 
 def get_free_particle_time(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> float:
     basis = system.get_potential(config.shape, config.resolution)["basis"]

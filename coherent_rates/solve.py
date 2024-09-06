@@ -52,14 +52,14 @@ if TYPE_CHECKING:
     )
 
     from coherent_rates.config import PeriodicSystemConfig
-    from coherent_rates.system import PeriodicSystem
+    from coherent_rates.system import System
 
 _L0Inv = TypeVar("_L0Inv", bound=int)
 
 
 @timed
 def _get_full_hamiltonian(
-    system: PeriodicSystem,
+    system: System,
     shape: tuple[_L0Inv, ...],
     resolution: tuple[_L0Inv, ...],
     *,
@@ -80,7 +80,7 @@ def _get_full_hamiltonian(
 
 
 def get_bloch_wavefunctions(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> BlochWavefunctionListWithEigenvaluesList[
     TruncatedBasis[int, int],
@@ -106,7 +106,7 @@ def get_bloch_wavefunctions(
 
 @timed
 def get_hamiltonian(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> SingleBasisDiagonalOperator[BlochBasis[TruncatedBasis[int, int]]]:
     wavefunctions = get_bloch_wavefunctions(system, config)
@@ -118,7 +118,7 @@ _AX0Inv = TypeVar("_AX0Inv", bound=EvenlySpacedTimeBasis[Any, Any, Any])
 
 
 def solve_schrodinger_equation(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: _AX0Inv,

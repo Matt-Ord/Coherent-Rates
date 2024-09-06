@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from surface_potential_analysis.state_vector.state_vector import StateVector
 
     from coherent_rates.config import PeriodicSystemConfig
-    from coherent_rates.system import PeriodicSystem
+    from coherent_rates.system import System
 
     _SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
     _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
@@ -84,7 +84,7 @@ def get_coherent_state(
 
 
 def get_thermal_occupation_x(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
     potential = convert_potential_to_position_basis(
@@ -97,7 +97,7 @@ def get_thermal_occupation_x(
 
 
 def get_thermal_occupation_k(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> np.ndarray[Any, np.dtype[np.float64]]:
     basis = system.get_potential_basis(config.shape, config.resolution)
@@ -114,7 +114,7 @@ def get_thermal_occupation_k(
 
 
 def get_random_coherent_coordinates(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
     basis = stacked_basis_as_fundamental_position_basis(
@@ -137,7 +137,7 @@ def get_random_coherent_coordinates(
 
 
 def get_random_coherent_state(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     sigma_0: float,
 ) -> StateVector[
@@ -195,7 +195,7 @@ def get_random_boltzmann_state_from_hamiltonian(
 
 
 def get_random_boltzmann_state(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
     """Generate a random Boltzmann state.

@@ -78,7 +78,7 @@ def _get_extrapolated_potential(
 
 
 @dataclass
-class PeriodicSystem(ABC):
+class System(ABC):
     """Represents the properties of a Periodic System."""
 
     id: str
@@ -107,6 +107,25 @@ class PeriodicSystem(ABC):
         return int.from_bytes(h.digest(), "big")
 
     @abstractmethod
+    def get_potential(
+        self: Self,
+        shape: tuple[int, ...],
+        resolution: tuple[int, ...],
+    ) -> Potential[StackedBasisWithVolumeLike[Any, Any, Any]]:
+        ...
+
+    def get_potential_basis(
+        self: Self,
+        shape: tuple[int, ...],
+        resolution: tuple[int, ...],
+    ) -> StackedBasisWithVolumeLike[Any, Any, Any]:
+        return self.get_potential(shape, resolution)["basis"]
+
+
+class PeriodicSystem(System):
+    """A periodic system defined by it's Fundamental Potential."""
+
+    @abstractmethod
     def get_repeating_potential(
         self: Self,
         resolution: tuple[int, ...],
@@ -125,15 +144,7 @@ class PeriodicSystem(ABC):
         interpolated = self.get_repeating_potential(resolution)
         return _get_extrapolated_potential(interpolated, shape)
 
-    def get_potential_basis(
-        self: Self,
-        shape: tuple[int, ...],
-        resolution: tuple[int, ...],
-    ) -> StackedBasisWithVolumeLike[Any, Any, Any]:
-        return self.get_potential(shape, resolution)["basis"]
 
-
-@dataclass
 class FundamentalPeriodicSystem(PeriodicSystem):
     """A periodic system defined by it's Fundamental Potential."""
 
@@ -183,22 +194,19 @@ class FundamentalPeriodicSystem(PeriodicSystem):
         )
 
 
-class FreeSystem(PeriodicSystem):
+class FreeSystem(System):
     """A free periodic system."""
 
-    def __init__(self, other: PeriodicSystem) -> None:  # noqa: ANN101, D107
+    def __init__(self, other: System) -> None:  # noqa: ANN101, D107
         self._other = other
         super().__init__(other.id, 0, other.lattice_constant, other.mass)
 
-    def get_repeating_potential(
+    def get_potential(
         self: Self,
+        shape: tuple[int, ...],
         resolution: tuple[int, ...],
-    ) -> Potential[
-        TupleBasisWithLengthLike[
-            *tuple[FundamentalTransformedPositionBasis[Any, Any], ...]
-        ]
-    ]:
-        other_potential = self._other.get_repeating_potential(resolution)
+    ) -> Potential[StackedBasisWithVolumeLike[Any, Any, Any]]:
+        other_potential = self._other.get_potential(shape, resolution)
         other_potential["data"] = np.zeros_like(other_potential["data"])
         return other_potential
 
@@ -312,6 +320,37 @@ class PeriodicSystem1dDoubleGaussian(PeriodicSystem):
         )
 
 
+@dataclass
+class PeriodicSystem1dHalfRate(FundamentalPeriodicSystem):
+    """Represents the properties of a 1D System with a half-rate fourier component."""
+
+    half_rate_energy: float
+
+    def __hash__(self: Self) -> int:
+        h = hashlib.sha256(usedforsecurity=False)
+        h.update(self.id.encode())
+        h.update(str(self.barrier_energy).encode())
+        h.update(str(self.lattice_constant).encode())
+        h.update(str(self.mass).encode())
+        h.update(str(self.half_rate_energy).encode())
+
+        return int.from_bytes(h.digest(), "big")
+
+    def _get_fundamental_potential(
+        self: Self,
+    ) -> Potential[TupleBasis[FundamentalTransformedPositionBasis1d[Literal[5]]]]:
+        delta_x = self.lattice_constant
+        axis = FundamentalTransformedPositionBasis1d[Literal[5]](
+            np.array([delta_x]),
+            5,
+        )
+
+        vector = 0.25 * self.barrier_energy * np.array([2, 0, 1, 1, 0]) * np.sqrt(5)
+        vector[[1, -1]] = 0.25 * self.barrier_energy * np.sqrt(5)
+
+        return {"basis": TupleBasis(axis), "data": vector}
+
+
 class PeriodicSystem2d(FundamentalPeriodicSystem):
     """Represents the properties of a 2D Periodic System."""
 
@@ -337,7 +376,7 @@ class PeriodicSystem2d(FundamentalPeriodicSystem):
         # (x0,x1) -> (-x0,x1)
         # (x0,x1) -> (x0,-x1)
         # We therefore occupy G = +-K0, +-K1, +-(K0+K1) equally
-        data = [[0, 1, 1], [1, 1, 0], [1, 0, 1]]
+        data = [[3, 1, 1], [1, 1, 0], [1, 0, 1]]
         vector = self.barrier_energy * np.array(data) / np.sqrt(9)
         return {
             "basis": TupleBasis(
@@ -389,21 +428,29 @@ SODIUM_COPPER_SYSTEM_1D = PeriodicSystem1d(
 SODIUM_COPPER_BRIDGE_SYSTEM_1D = PeriodicSystem1d(
     id="NaCuB",
     barrier_energy=SODIUM_COPPER_BRIDGE_ENERGY,
-    lattice_constant=(1 / np.sqrt(3)) * SODIUM_COPPER_SYSTEM_2D.lattice_constant,
+    lattice_constant=SODIUM_COPPER_SYSTEM_1D.lattice_constant,
     mass=3.8175458e-26,
 )
 SODIUM_COPPER_BRIDGE_SYSTEM_DEEP_1D = PeriodicSystem1dDeep(
     id="NaCuDeep",
     barrier_energy=SODIUM_COPPER_BRIDGE_ENERGY,
-    lattice_constant=(1 / np.sqrt(3)) * SODIUM_COPPER_SYSTEM_2D.lattice_constant,
+    lattice_constant=SODIUM_COPPER_BRIDGE_SYSTEM_1D.lattice_constant,
     mass=3.8175458e-26,
 )
 SODIUM_COPPER_BRIDGE_SYSTEM_GAUSSIAN_1D = PeriodicSystem1dDoubleGaussian(
     id="NaCuGauss",
     barrier_energy=SODIUM_COPPER_BRIDGE_ENERGY,
-    lattice_constant=(1 / np.sqrt(3)) * SODIUM_COPPER_SYSTEM_2D.lattice_constant,
+    lattice_constant=SODIUM_COPPER_SYSTEM_1D.lattice_constant,
     mass=3.8175458e-26,
 )
+SODIUM_COPPER_BRIDGE_SYSTEM_HALF_RATE_1D = PeriodicSystem1dHalfRate(
+    id="NaCuHalfRate",
+    barrier_energy=SODIUM_COPPER_BRIDGE_ENERGY,
+    lattice_constant=2 * SODIUM_COPPER_SYSTEM_1D.lattice_constant,
+    mass=3.8175458e-26,
+    half_rate_energy=0.01 * SODIUM_COPPER_BRIDGE_ENERGY,
+)
+
 
 # see <https://www.sciencedirect.com/science/article/pii/S0039602897000897>
 LITHIUM_COPPER_BRIDGE_ENERGY = (477.16 - 471.41) * 1e3 / Avogadro
