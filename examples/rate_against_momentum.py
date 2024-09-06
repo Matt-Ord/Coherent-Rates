@@ -17,7 +17,7 @@ from coherent_rates.plot import (
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
     FreeSystem,
-    PeriodicSystem,
+    System,
 )
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 def _test_convergence_with_shape(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     directions: list[tuple[int, ...]],
     fit_method: FitMethod[Any] | None = None,
@@ -52,7 +52,7 @@ def _test_convergence_with_shape(
 
 
 def _test_convergence_with_resolution(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     directions: list[tuple[int, ...]],
     fit_method: FitMethod[Any] | None = None,
@@ -79,7 +79,7 @@ def _test_convergence_with_resolution(
 
 
 def _test_convergence_with_truncation(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     directions: list[tuple[int, ...]],
     fit_method: FitMethod[Any] | None = None,
@@ -109,7 +109,7 @@ def _test_convergence_with_truncation(
 
 
 def _compare_rate_against_free_surface(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,

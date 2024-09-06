@@ -88,7 +88,7 @@ from coherent_rates.state import (
 )
 from coherent_rates.system import (
     FreeSystem,
-    PeriodicSystem,
+    System,
 )
 
 if TYPE_CHECKING:
@@ -115,7 +115,7 @@ if TYPE_CHECKING:
 
 
 def plot_system_eigenstates_1d(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     states: Iterable[int] | None = None,
@@ -142,7 +142,7 @@ def plot_system_eigenstates_1d(
 
 
 def plot_system_eigenstates_2d(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     states: Iterable[int] | None = None,
@@ -166,7 +166,7 @@ def plot_system_eigenstates_2d(
 
 
 def plot_system_eigenvalues(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> None:
     wavefunctions = get_bloch_wavefunctions(system, config)
@@ -199,7 +199,7 @@ def plot_system_eigenvalues(
 
 
 def plot_system_bands(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> None:
     """Investigate the Bandstructure of a system."""
@@ -239,7 +239,7 @@ def plot_system_bands(
 
 
 def plot_system_evolution_1d(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     initial_state: StateVector[_B0],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
@@ -257,7 +257,7 @@ def plot_system_evolution_1d(
 
 
 def plot_system_evolution_2d(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     initial_state: StateVector[Any],
     times: EvenlySpacedTimeBasis[Any, Any, Any],
@@ -271,7 +271,7 @@ def plot_system_evolution_2d(
 
 
 def plot_pair_system_evolution_1d(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any],
     initial_state: StateVector[_SBV0]
@@ -331,7 +331,7 @@ def plot_isf_with_fit(
     data: ValueList[_BT0],
     method: FitMethod[Any],
     *,
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> tuple[Figure, Axes]:
     fig, ax, line = plot_value_list_against_time(data)
@@ -371,7 +371,7 @@ def plot_isf_fit_for_conditions(
 
 
 def plot_rate_against_momentum_isf_fit(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
@@ -384,7 +384,7 @@ def plot_rate_against_momentum_isf_fit(
 
 
 def plot_boltzmann_isf(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
     *,
@@ -428,7 +428,7 @@ def plot_boltzmann_isf(
 
 
 def plot_free_isf(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
     *,
@@ -465,7 +465,7 @@ def plot_free_isf(
 
 
 def plot_band_resolved_boltzmann_isf(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
     *,
@@ -515,7 +515,7 @@ def _plot_rate_against_momentum(
 
 
 def plot_rate_against_momentum(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
@@ -542,7 +542,7 @@ def plot_rate_against_momentum(
 
 
 def plot_effective_mass_against_condition(
-    conditions: list[tuple[PeriodicSystem, PeriodicSystemConfig, str]],
+    conditions: list[tuple[System, PeriodicSystemConfig, str]],
     x_values: np.ndarray[Any, np.dtype[np.float64]],
     *,
     fit_method: FitMethod[Any] | None = None,
@@ -579,7 +579,7 @@ def plot_effective_mass_against_condition(
 
 
 def plot_effective_mass_against_mass(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
@@ -619,7 +619,7 @@ def plot_effective_mass_against_mass(
 
 
 def plot_effective_mass_against_temperature(  # noqa: PLR0913
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     temperatures: np.ndarray[Any, np.dtype[np.float64]] | None = None,
@@ -698,7 +698,7 @@ def plot_effective_mass_against_temperature_comparison(
 
 
 def plot_thermal_scattered_energy_change_comparison(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     *,
     directions: list[tuple[int, ...]] | None = None,
@@ -732,7 +732,7 @@ def plot_thermal_scattered_energy_change_comparison(
 
 
 def plot_scattered_energy_change_state(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     state: StateVector[Any],
     *,
@@ -793,7 +793,7 @@ def plot_occupation_against_energy_change_with_contition(
 
 
 def plot_occupation_against_energy_change_comparison_mass(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     mass_ratio: float,
 ) -> None:
@@ -820,7 +820,7 @@ def plot_occupation_against_energy_change_comparison_mass(
 
 
 def plot_occupation_against_energy_change_comparison_temperature(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     temperatures: tuple[float, float],
 ) -> None:
