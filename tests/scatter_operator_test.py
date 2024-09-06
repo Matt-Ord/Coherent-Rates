@@ -11,17 +11,17 @@ from surface_potential_analysis.stacked_basis.conversion import (
 )
 from surface_potential_analysis.state_vector.plot import get_periodic_x_operator
 
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.scattering_operator import (
     SparseScatteringOperator,
     as_operator_from_sparse_scattering_operator,
     as_sparse_scattering_operator_from_operator,
     get_periodic_x_operator_sparse,
 )
+from coherent_rates.solve import get_hamiltonian
 from coherent_rates.system import (
     HYDROGEN_NICKEL_SYSTEM_1D,
     PeriodicSystem,
-    PeriodicSystemConfig,
-    get_hamiltonian,
 )
 
 if TYPE_CHECKING:

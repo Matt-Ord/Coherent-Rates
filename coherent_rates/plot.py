@@ -49,10 +49,13 @@ from surface_potential_analysis.wavepacket.plot import (
     plot_occupation_against_band_average_energy,
     plot_wavepacket_eigenvalues_1d_k,
     plot_wavepacket_eigenvalues_1d_x,
+    plot_wavepacket_eigenvalues_2d_k,
+    plot_wavepacket_eigenvalues_2d_x,
     plot_wavepacket_transformed_energy_1d,
     plot_wavepacket_transformed_energy_effective_mass_against_band,
     plot_wavepacket_transformed_energy_effective_mass_against_energy,
 )
+from surface_potential_analysis.wavepacket.wavepacket import get_wavepacket_at_band
 
 from coherent_rates.fit import GaussianMethod, get_default_isf_times
 from coherent_rates.isf import (
@@ -174,10 +177,22 @@ def plot_system_eigenvalues(
     fig, _ = plot_wavepacket_eigenvalues_1d_x(wavefunctions)
     fig.show()
 
+    if len(config.shape) > 1:
+        wavepacket_0 = get_wavepacket_at_band(wavefunctions, 0)
+        fig, _, _ = plot_wavepacket_eigenvalues_2d_k(wavepacket_0)
+        fig.show()
+
+        fig, _, _ = plot_wavepacket_eigenvalues_2d_x(wavepacket_0)
+        fig.show()
+
     fig, ax, _ = plot_wavepacket_transformed_energy_1d(
         wavefunctions,
         free_mass=system.mass,
         measure="abs",
+    )
+    ax.set_title(  # type: ignore library type
+        "Plot of the lowest component of the fourier transform of energy"
+        "\nagainst that of a free particle",
     )
     ax.legend()  # type: ignore library type
     fig.show()
