@@ -57,6 +57,7 @@ if TYPE_CHECKING:
 _L0Inv = TypeVar("_L0Inv", bound=int)
 
 
+@timed
 def _get_full_hamiltonian(
     system: PeriodicSystem,
     shape: tuple[_L0Inv, ...],
