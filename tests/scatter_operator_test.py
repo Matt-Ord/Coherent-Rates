@@ -21,7 +21,7 @@ from coherent_rates.scattering_operator import (
 from coherent_rates.solve import get_hamiltonian
 from coherent_rates.system import (
     HYDROGEN_NICKEL_SYSTEM_1D,
-    PeriodicSystem,
+    System,
 )
 
 if TYPE_CHECKING:
@@ -44,7 +44,7 @@ def get_periodic_x_operator_as_sparse(
 
 
 @pytest.fixture()
-def system() -> PeriodicSystem:
+def system() -> System:
     """Fixture to generate a random n between 2 and 20."""
     return HYDROGEN_NICKEL_SYSTEM_1D
 
@@ -71,7 +71,7 @@ def direction() -> tuple[int, ...]:
 
 
 def test_sparse_periodic_x_has_correct_nonzero(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
 ) -> None:
     direction = (1,)
@@ -91,7 +91,7 @@ def test_sparse_periodic_x_has_correct_nonzero(
 
 
 def test_sparse_periodic_x_equals_converted(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     direction: tuple[int, ...],
 ) -> None:
@@ -106,7 +106,7 @@ def test_sparse_periodic_x_equals_converted(
 
 
 def test_sparse_periodic_x_is_correct_in_momentum_basis(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     direction: tuple[int, ...],
 ) -> None:

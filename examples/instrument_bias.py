@@ -15,12 +15,12 @@ from coherent_rates.plot import (
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
-    PeriodicSystem,
+    System,
 )
 
 
 def _test_instrument_bias(
-    system: PeriodicSystem,
+    system: System,
     config: PeriodicSystemConfig,
     energies: Iterable[float],
     *,
