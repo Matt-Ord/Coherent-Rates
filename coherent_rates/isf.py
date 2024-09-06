@@ -8,7 +8,6 @@ import numpy as np
 from scipy.constants import Boltzmann, electron_volt, hbar  # type: ignore library type
 from surface_potential_analysis.basis.basis import (
     FundamentalBasis,
-    FundamentalPositionBasis,
     FundamentalTransformedBasis,
 )
 from surface_potential_analysis.basis.basis_like import BasisLike
@@ -16,7 +15,6 @@ from surface_potential_analysis.basis.momentum_basis_like import MomentumBasis
 from surface_potential_analysis.basis.stacked_basis import (
     StackedBasisWithVolumeLike,
     TupleBasis,
-    TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.time_basis_like import (
     BasisWithTimeLike,
@@ -28,9 +26,6 @@ from surface_potential_analysis.dynamics.schrodinger.solve import (
 from surface_potential_analysis.operator.operator import (
     SingleBasisDiagonalOperator,
     apply_operator_to_state,
-)
-from surface_potential_analysis.potential.conversion import (
-    convert_potential_to_position_basis,
 )
 from surface_potential_analysis.state_vector.eigenstate_calculation import (
     calculate_expectation_diagonal,
@@ -47,6 +42,7 @@ from surface_potential_analysis.state_vector.state_vector_list import (
 from surface_potential_analysis.util.decorators import npy_cached_dict, timed
 from surface_potential_analysis.wavepacket.get_eigenstate import BlochBasis
 
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.fit import (
     FitMethod,
     GaussianMethod,
@@ -58,18 +54,17 @@ from coherent_rates.scattering_operator import (
     apply_scattering_operator_to_states,
     get_instrument_biased_periodic_x,
 )
+from coherent_rates.solve import get_hamiltonian
+from coherent_rates.state import (
+    get_coherent_state,
+    get_random_boltzmann_state_from_hamiltonian,
+    get_random_coherent_coordinates,
+)
 from coherent_rates.system import (
     PeriodicSystem,
-    PeriodicSystemConfig,
-    get_coherent_state,
-    get_hamiltonian,
-    get_random_coherent_coordinates,
 )
 
 if TYPE_CHECKING:
-    from surface_potential_analysis.basis.explicit_basis import (
-        ExplicitStackedBasisWithLength,
-    )
     from surface_potential_analysis.basis.stacked_basis import (
         TupleBasisLike,
     )
@@ -233,57 +228,6 @@ def get_isf(
     return _get_isf_from_hamiltonian(hamiltonian, operator, initial_state, times)
 
 
-def get_boltzmann_state_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[_B0],
-    temperature: float,
-    phase: np.ndarray[tuple[int], np.dtype[np.float64]] | None = None,
-) -> StateVector[_B0]:
-    boltzmann_distribution = np.exp(
-        -hamiltonian["data"] / (2 * Boltzmann * temperature),
-    )
-    normalization = np.sqrt(sum(np.square(boltzmann_distribution)))
-    boltzmann_state = (
-        boltzmann_distribution / normalization
-        if phase is None
-        else boltzmann_distribution * np.exp(1j * phase) / normalization
-    )
-    return {"basis": hamiltonian["basis"][0], "data": boltzmann_state}
-
-
-def _get_random_boltzmann_state_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[_B0],
-    temperature: float,
-) -> StateVector[_B0]:
-    rng = np.random.default_rng()
-    phase = 2 * np.pi * rng.random(len(hamiltonian["data"]))
-    return get_boltzmann_state_from_hamiltonian(hamiltonian, temperature, phase)
-
-
-def get_random_boltzmann_state(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-) -> StateVector[ExplicitStackedBasisWithLength[Any, Any]]:
-    """Generate a random Boltzmann state.
-
-    Follows the formula described in eqn 5 in
-    https://doi.org/10.48550/arXiv.2002.12035.
-
-
-    Args:
-    ----
-        system (PeriodicSystem): system
-        config (PeriodicSystemConfig): config
-        temperature (float): temperature of the system
-
-    Returns:
-    -------
-        StateVector[Any]: state with boltzmann distribution
-
-    """
-    hamiltonian = get_hamiltonian(system, config)
-    return _get_random_boltzmann_state_from_hamiltonian(hamiltonian, config.temperature)
-
-
 def _get_boltzmann_isf_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_ESB0],
     config: PeriodicSystemConfig,
@@ -300,7 +244,7 @@ def _get_boltzmann_isf_from_hamiltonian(
         energy_range=config.scattered_energy_range,
     )
     for i in range(n_repeats):
-        state = _get_random_boltzmann_state_from_hamiltonian(
+        state = get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
             config.temperature,
         )
@@ -314,38 +258,6 @@ def _get_boltzmann_isf_from_hamiltonian(
         "basis": times,
         "standard_deviation": sd,
     }
-
-
-def get_random_coherent_state(
-    system: PeriodicSystem,
-    config: PeriodicSystemConfig,
-    sigma_0: float,
-) -> StateVector[
-    TupleBasisWithLengthLike[*tuple[FundamentalPositionBasis[Any, Any], ...]]
-]:
-    """Generate a Gaussian state.
-
-    x0,k0 are given approximately by a thermal distribution.
-
-    Args:
-    ----
-        system (PeriodicSystem): system
-        config (PeriodicSystemConfig): config
-        sigma_0 (float): width of the state
-
-    Returns:
-    -------
-        StateVector[...]: random coherent state
-
-    """
-    potential = convert_potential_to_position_basis(
-        system.get_potential(config.shape, config.resolution),
-    )
-    basis = potential["basis"]
-
-    x0, k0 = get_random_coherent_coordinates(system, config)
-
-    return get_coherent_state(basis, x0, k0, sigma_0)
 
 
 def _get_boltzmann_isf_data_path(
@@ -412,7 +324,7 @@ def get_band_resolved_boltzmann_isf(
     isf_data = np.zeros((n_repeats, bands.n * times.n), dtype=np.complex128)
 
     for i in range(n_repeats):
-        state = _get_random_boltzmann_state_from_hamiltonian(
+        state = get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
             config.temperature,
         )
@@ -810,7 +722,7 @@ def _get_thermal_scattered_energy_change(
 ) -> ValueList[FundamentalBasis[int]]:
     energy_change = np.zeros(n_repeats, dtype=np.complex128)
     for i in range(n_repeats):
-        state = _get_random_boltzmann_state_from_hamiltonian(hamiltonian, temperature)
+        state = get_random_boltzmann_state_from_hamiltonian(hamiltonian, temperature)
         energy_change[i] = _get_scattered_energy_change(hamiltonian, state, direction)
 
     return {"basis": FundamentalBasis(n_repeats), "data": energy_change}

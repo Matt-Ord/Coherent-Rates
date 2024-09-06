@@ -3,6 +3,7 @@ from surface_potential_analysis.state_vector.plot_value_list import (
     plot_value_list_against_time,
 )
 
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.isf import (
     get_boltzmann_isf,
     get_coherent_isf,
@@ -10,7 +11,6 @@ from coherent_rates.isf import (
 from coherent_rates.system import (
     SODIUM_COPPER_SYSTEM_1D,
     FreeSystem,
-    PeriodicSystemConfig,
 )
 
 if __name__ == "__main__":

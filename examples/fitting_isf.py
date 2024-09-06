@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.fit import (
     DoubleGaussianMethod,
     ExponentialMethod,
@@ -12,7 +13,6 @@ from coherent_rates.isf import (
 from coherent_rates.plot import plot_isf_with_fit
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
-    PeriodicSystemConfig,
 )
 
 if __name__ == "__main__":

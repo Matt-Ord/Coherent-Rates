@@ -31,7 +31,8 @@ from surface_potential_analysis.util.util import get_measured_data
 if TYPE_CHECKING:
     from surface_potential_analysis.state_vector.eigenstate_list import ValueList
 
-    from coherent_rates.system import PeriodicSystem, PeriodicSystemConfig
+    from coherent_rates.config import PeriodicSystemConfig
+    from coherent_rates.system import PeriodicSystem
 
 
 _BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
@@ -389,11 +390,13 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
     @classmethod
     def _fit_param_initial_guess(
         cls: type[Self],
-        data: ValueList[_BT0],  # noqa: ARG003
+        data: ValueList[_BT0],
         **info: Unpack[FitInfo],
     ) -> tuple[float, float, float, float]:
         free_time = get_free_particle_time(**info)
-        return (0.5, free_time, 0.5, 2 * free_time)
+        offset = 0.8 * np.min(np.abs(data["data"]))
+        initial_height = (1 - offset) / 2
+        return (initial_height, 0.5 * free_time, initial_height, 2 * free_time)
 
     @staticmethod
     def _params_from_fit(
@@ -438,7 +441,7 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
         self: Self,
         **info: Unpack[FitInfo],
     ) -> EvenlySpacedTimeBasis[Any, Any, Any]:
-        return EvenlySpacedTimeBasis(100, 1, 0, 40 * get_free_particle_time(**info))
+        return EvenlySpacedTimeBasis(100, 1, 0, 4 * get_free_particle_time(**info))
 
 
 @dataclass

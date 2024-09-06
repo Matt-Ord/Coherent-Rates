@@ -5,6 +5,7 @@ from typing import Any, Iterable
 import numpy as np
 from scipy.constants import electron_volt  # type: ignore bad library
 
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.fit import FitMethod, GaussianMethodWithOffset
 from coherent_rates.isf import (
     get_conditions_at_energy_range,
@@ -15,7 +16,6 @@ from coherent_rates.plot import (
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
     PeriodicSystem,
-    PeriodicSystemConfig,
 )
 
 

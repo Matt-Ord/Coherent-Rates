@@ -11,13 +11,16 @@ from surface_potential_analysis.state_vector.plot import (
 )
 from surface_potential_analysis.util.plot import plot_data_2d_k, plot_data_2d_x
 
-from coherent_rates.isf import get_random_boltzmann_state, get_random_coherent_state
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.plot import plot_system_evolution_2d
-from coherent_rates.system import (
-    SODIUM_COPPER_SYSTEM_2D,
-    PeriodicSystemConfig,
+from coherent_rates.state import (
+    get_random_boltzmann_state,
+    get_random_coherent_state,
     get_thermal_occupation_k,
     get_thermal_occupation_x,
+)
+from coherent_rates.system import (
+    SODIUM_COPPER_SYSTEM_2D,
 )
 
 if __name__ == "__main__":

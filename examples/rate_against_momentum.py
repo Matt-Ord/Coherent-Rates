@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from scipy.constants import electron_volt  # type:ignore lib
 from surface_potential_analysis.util.plot import get_figure
 
-from coherent_rates.fit import GaussianMethod
+from coherent_rates.config import PeriodicSystemConfig
+from coherent_rates.fit import (
+    GaussianMethod,
+    GaussianMethodWithOffset,
+)
 from coherent_rates.plot import (
     plot_rate_against_momentum,
     plot_rate_against_momentum_isf_fit,
@@ -13,7 +18,6 @@ from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
     FreeSystem,
     PeriodicSystem,
-    PeriodicSystemConfig,
 )
 
 if TYPE_CHECKING:
@@ -47,14 +51,73 @@ def _test_convergence_with_shape(
     input()
 
 
+def _test_convergence_with_resolution(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    directions: list[tuple[int, ...]],
+    fit_method: FitMethod[Any] | None = None,
+) -> None:
+    fig, ax, line = plot_rate_against_momentum(
+        system,
+        config,
+        directions=directions,
+        fit_method=fit_method,
+    )
+    line.set_label("Standard")
+
+    _, _, line = plot_rate_against_momentum(
+        system,
+        config.with_resolution(tuple(2 * j for j in config.resolution)),
+        directions=directions,
+        fit_method=fit_method,
+        ax=ax,
+    )
+    line.set_label("2x resolution")
+    ax.legend()  # type: ignore unknown
+    fig.show()
+    input()
+
+
+def _test_convergence_with_truncation(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+    directions: list[tuple[int, ...]],
+    fit_method: FitMethod[Any] | None = None,
+) -> None:
+    fig, ax, line = plot_rate_against_momentum(
+        system,
+        config,
+        directions=directions,
+        fit_method=fit_method,
+    )
+    line.set_label("Standard")
+
+    config = config.with_resolution(
+        tuple(2 * j for j in config.resolution),
+    ).with_truncation(2 * config.n_bands)
+    _, _, line = plot_rate_against_momentum(
+        system,
+        config,
+        directions=directions,
+        fit_method=fit_method,
+        ax=ax,
+    )
+    line.set_label("2x truncation")
+    ax.legend()  # type: ignore unknown
+    fig.show()
+    input()
+
+
 def _compare_rate_against_free_surface(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
+    free_fit_method: FitMethod[Any] | None = None,
     directions: list[tuple[int, ...]] | None = None,
 ) -> None:
     fit_method = GaussianMethod() if fit_method is None else fit_method
+    free_fit_method = GaussianMethod() if free_fit_method is None else free_fit_method
 
     fig, ax = get_figure(None)
 
@@ -70,7 +133,7 @@ def _compare_rate_against_free_surface(
     _, _, line = plot_rate_against_momentum(
         FreeSystem(system),
         config,
-        fit_method=fit_method,
+        fit_method=free_fit_method,
         directions=directions,
         ax=ax,
     )
@@ -89,10 +152,24 @@ if __name__ == "__main__":
         (100,),
         truncation=50,
         temperature=100,
+        scattered_energy_range=(-0.005 * electron_volt, 0.005 * electron_volt),
     )
     system = SODIUM_COPPER_BRIDGE_SYSTEM_1D
     directions = [(i,) for i in [1, 2, *list(range(5, 105, 5))]]
 
     _test_convergence_with_shape(system, config, directions=directions)
-    plot_rate_against_momentum_isf_fit(system, config, directions=directions)
-    _compare_rate_against_free_surface(system, config, directions=directions)
+    _test_convergence_with_resolution(system, config, directions=directions)
+    _test_convergence_with_truncation(system, config, directions=directions)
+    plot_rate_against_momentum_isf_fit(
+        system,
+        config,
+        directions=directions,
+        fit_method=GaussianMethodWithOffset(),
+    )
+    _compare_rate_against_free_surface(
+        system,
+        config,
+        directions=directions,
+        fit_method=GaussianMethodWithOffset(),
+        free_fit_method=GaussianMethodWithOffset(),
+    )

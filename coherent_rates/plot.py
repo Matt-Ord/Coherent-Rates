@@ -8,14 +8,12 @@ from matplotlib.axes import Axes
 from scipy.constants import Boltzmann  # type: ignore library type
 from surface_potential_analysis.basis.basis_like import BasisLike
 from surface_potential_analysis.basis.stacked_basis import (
-    StackedBasisLike,
     StackedBasisWithVolumeLike,
 )
 from surface_potential_analysis.basis.time_basis_like import (
     BasisWithTimeLike,
     EvenlySpacedTimeBasis,
 )
-from surface_potential_analysis.operator.operator import apply_operator_to_state
 from surface_potential_analysis.potential.plot import (
     plot_potential_1d_x,
 )
@@ -35,22 +33,25 @@ from surface_potential_analysis.state_vector.plot_value_list import (
     plot_split_value_list_against_time,
     plot_value_list_against_frequency,
     plot_value_list_against_momentum,
-    plot_value_list_against_nx,
     plot_value_list_against_time,
 )
 from surface_potential_analysis.state_vector.state_vector_list import (
     get_state_vector,
 )
-from surface_potential_analysis.util.plot import Scale, get_figure, plot_data_1d
+from surface_potential_analysis.util.plot import (
+    get_figure,
+    plot_data_1d,
+)
 from surface_potential_analysis.util.squared_scale import SquaredScale
 from surface_potential_analysis.util.util import Measure
 from surface_potential_analysis.wavepacket.plot import (
-    get_wavepacket_effective_mass,
     plot_occupation_against_band,
+    plot_occupation_against_band_average_energy,
     plot_wavepacket_eigenvalues_1d_k,
     plot_wavepacket_eigenvalues_1d_x,
     plot_wavepacket_transformed_energy_1d,
-    plot_wavepacket_transformed_energy_effective_mass_1d,
+    plot_wavepacket_transformed_energy_effective_mass_against_band,
+    plot_wavepacket_transformed_energy_effective_mass_against_energy,
 )
 
 from coherent_rates.fit import GaussianMethod, get_default_isf_times
@@ -59,26 +60,32 @@ from coherent_rates.isf import (
     get_analytical_isf,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
-    get_boltzmann_state_from_hamiltonian,
     get_conditions_at_directions,
     get_conditions_at_mass,
     get_conditions_at_temperatures,
     get_effective_mass_against_condition_data,
     get_isf_pair_states,
-    get_random_boltzmann_state,
     get_rate_against_momentum_data,
     get_rate_against_momentum_linear_fit,
     get_scattered_energy_change_against_k,
     get_thermal_scattered_energy_change_against_k,
 )
-from coherent_rates.scattering_operator import get_instrument_biased_periodic_x
-from coherent_rates.system import (
-    FreeSystem,
-    PeriodicSystem,
-    PeriodicSystemConfig,
+from coherent_rates.scattering_operator import (
+    apply_scattering_operator_to_state,
+    get_instrument_biased_periodic_x,
+)
+from coherent_rates.solve import (
     get_bloch_wavefunctions,
     get_hamiltonian,
     solve_schrodinger_equation,
+)
+from coherent_rates.state import (
+    get_boltzmann_state_from_hamiltonian,
+    get_random_boltzmann_state,
+)
+from coherent_rates.system import (
+    FreeSystem,
+    PeriodicSystem,
 )
 
 if TYPE_CHECKING:
@@ -90,21 +97,17 @@ if TYPE_CHECKING:
     )
     from surface_potential_analysis.basis.momentum_basis_like import MomentumBasis
     from surface_potential_analysis.basis.stacked_basis import (
-        StackedBasisLike,
         StackedBasisWithVolumeLike,
     )
     from surface_potential_analysis.state_vector.state_vector import StateVector
     from surface_potential_analysis.state_vector.state_vector_list import ValueList
     from surface_potential_analysis.types import SingleIndexLike
-    from surface_potential_analysis.wavepacket.wavepacket import (
-        BlochWavefunctionListWithEigenvaluesList,
-    )
 
+    from coherent_rates.config import PeriodicSystemConfig
     from coherent_rates.fit import FitMethod
 
     _B0 = TypeVar("_B0", bound=BasisLike[Any, Any])
 
-    _SB0 = TypeVar("_SB0", bound=StackedBasisLike[Any, Any, Any])
     _SBV0 = TypeVar("_SBV0", bound=StackedBasisWithVolumeLike[Any, Any, Any])
 
 
@@ -159,57 +162,10 @@ def plot_system_eigenstates_2d(
     input()
 
 
-def _plot_wavepacket_effective_mass(
-    wavepacket: BlochWavefunctionListWithEigenvaluesList[
-        _B0,
-        _SB0,
-        _SBV0,
-    ],
-    axes: tuple[int,] = (0,),
-    *,
-    ax: Axes | None = None,
-    scale: Scale = "linear",
-    measure: Measure = "real",
-) -> tuple[Figure, Axes, Line2D]:
-    """Plot the energy of the eigenstates in a wavepacket.
-
-    Parameters
-    ----------
-    wavepacket : BlochWavefunctionListWithEigenvaluesList[
-        _B0,
-        _SB0,
-        _SBV0,
-    ]
-    ax : Axes | None, optional
-        plot axis, by default None
-    scale : Literal[&quot;symlog&quot;, &quot;linear&quot;], optional
-        scale, by default "linear"
-
-    Returns
-    -------
-    tuple[Figure, Axes, QuadMesh]
-
-    """
-    fig, ax, line = plot_value_list_against_nx(
-        get_wavepacket_effective_mass(wavepacket, axes[0]),
-        ax=ax,
-        scale=scale,
-        measure=measure,
-    )
-    line.set_label("Effective Mass")
-
-    ax.set_xlabel("Band Index")  # type: ignore library type
-    ax.set_ylabel("Mass / kg")  # type: ignore library type
-    ax.set_ylim((0.0, ax.get_ylim()[1]))
-
-    return fig, ax, line
-
-
-def plot_system_bands(
+def plot_system_eigenvalues(
     system: PeriodicSystem,
     config: PeriodicSystemConfig,
 ) -> None:
-    """Investigate the Bandstructure of a system."""
     wavefunctions = get_bloch_wavefunctions(system, config)
 
     fig, _ = plot_wavepacket_eigenvalues_1d_k(wavefunctions)
@@ -226,14 +182,18 @@ def plot_system_bands(
     ax.legend()  # type: ignore library type
     fig.show()
 
-    fig, _, _ = plot_wavepacket_transformed_energy_effective_mass_1d(
-        wavefunctions,
-    )
-    fig.show()
 
-    fig, ax, line0 = _plot_wavepacket_effective_mass(
+def plot_system_bands(
+    system: PeriodicSystem,
+    config: PeriodicSystemConfig,
+) -> None:
+    """Investigate the Bandstructure of a system."""
+    wavefunctions = get_bloch_wavefunctions(system, config)
+
+    fig, ax, line0 = plot_wavepacket_transformed_energy_effective_mass_against_band(
         wavefunctions,
     )
+
     ax.set_ylim(0, 4 * system.mass)
     _, _, line1 = plot_occupation_against_band(
         wavefunctions,
@@ -241,6 +201,23 @@ def plot_system_bands(
         ax=cast(Axes, ax.twinx()),
     )
     line1.set_color("C1")
+    ax.legend(handles=[line0, line1])  # type: ignore library type
+    fig.show()
+
+    fig, ax, line0 = plot_wavepacket_transformed_energy_effective_mass_against_energy(
+        wavefunctions,
+    )
+    _, _, line1 = plot_occupation_against_band_average_energy(
+        wavefunctions,
+        config.temperature,
+        ax=cast(Axes, ax.twinx()),
+    )
+    line1.set_color("C1")
+
+    ax.set_ylim(0, 4 * system.mass)
+    line = ax.axvline(system.barrier_energy)  # type: ignore library type
+    line.set_color("black")
+    line.set_linestyle("--")
     ax.legend(handles=[line0, line1])  # type: ignore library type
     fig.show()
     input()
@@ -787,11 +764,12 @@ def plot_occupation_against_energy_change_with_contition(
             config.direction,
             config.scattered_energy_range,
         )
-        scattered_state = apply_operator_to_state(operator, state)
+        scattered_state = apply_scattering_operator_to_state(operator, state)
 
         fig, ax, line = plot_total_band_occupation_against_energy(
             hamiltonian,
             scattered_state,
+            ax=ax,
         )
         line.set_label(label)
 
@@ -836,8 +814,8 @@ def plot_occupation_against_energy_change_comparison_temperature(
         conditions,
     )
 
-    ax.axvline(system.barrier_energy, color="black", ls="--")  # type: ignore library type
-
+    line = ax.axvline(system.barrier_energy, color="black", ls="--")  # type: ignore library type
+    line.set_label("Barrier Energy")
     ax.set_xlim(0, 10 * system.barrier_energy)
     ax.set_ylim(0)
     ax.legend()  # type: ignore library type
