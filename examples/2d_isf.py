@@ -1,15 +1,15 @@
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
 from surface_potential_analysis.potential.plot import plot_potential_2d_x
 
-from coherent_rates.isf import get_random_boltzmann_state
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.plot import (
     plot_boltzmann_isf,
     plot_system_eigenstates_2d,
     plot_system_evolution_2d,
 )
+from coherent_rates.state import get_random_boltzmann_state
 from coherent_rates.system import (
     SODIUM_COPPER_SYSTEM_2D,
-    PeriodicSystemConfig,
 )
 
 if __name__ == "__main__":

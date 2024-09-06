@@ -1,5 +1,6 @@
 import numpy as np
 
+from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.isf import get_conditions_at_barrier_energy, get_conditions_at_mass
 from coherent_rates.plot import (
     plot_barrier_temperature,
@@ -9,7 +10,6 @@ from coherent_rates.plot import (
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
-    PeriodicSystemConfig,
 )
 
 if __name__ == "__main__":
