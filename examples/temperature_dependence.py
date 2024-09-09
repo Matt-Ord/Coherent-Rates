@@ -4,9 +4,9 @@ from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.isf import get_conditions_at_barrier_energy, get_conditions_at_mass
 from coherent_rates.plot import (
     plot_barrier_temperature,
-    plot_effective_mass_against_mass,
-    plot_effective_mass_against_temperature,
-    plot_effective_mass_against_temperature_comparison,
+    plot_linear_fit_effective_mass_against_mass,
+    plot_linear_fit_effective_mass_against_temperature,
+    plot_linear_fit_effective_mass_against_temperature_comparison,
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     directions = [(i,) for i in [1, 2, *list(range(5, 105, 5))]]
     masses = np.array([0.1, 0.5, 1, 5, 10]) * system.mass
-    plot_effective_mass_against_mass(
+    plot_linear_fit_effective_mass_against_mass(
         system,
         config,
         masses=masses,
@@ -26,7 +26,7 @@ if __name__ == "__main__":
     )
 
     temperatures = np.array([(20 * i) for i in range(3, 10)])
-    (fig, ax, line), momentum_fig = plot_effective_mass_against_temperature(
+    (fig, ax, line), momentum_fig = plot_linear_fit_effective_mass_against_temperature(
         system,
         config,
         temperatures=temperatures,
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     input()
 
     conditions = get_conditions_at_mass(system, config, masses)
-    plot_effective_mass_against_temperature_comparison(
+    plot_linear_fit_effective_mass_against_temperature_comparison(
         conditions,
         temperatures=temperatures,
         directions=directions,
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     barrier_energies = np.array([0.1, 0.5, 1, 5, 10]) * system.barrier_energy
     conditions = get_conditions_at_barrier_energy(system, config, barrier_energies)
-    plot_effective_mass_against_temperature_comparison(
+    plot_linear_fit_effective_mass_against_temperature_comparison(
         conditions,
         temperatures=temperatures,
         directions=directions,
