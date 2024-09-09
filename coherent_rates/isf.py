@@ -47,6 +47,7 @@ from coherent_rates.fit import (
     FitMethod,
     GaussianMethod,
     GaussianPlusExponentialMethod,
+    get_free_particle_rate,
 )
 from coherent_rates.scattering_operator import (
     SparseScatteringOperator,
@@ -438,6 +439,32 @@ def _get_rate_against_momentum_data_path(
     )
 
 
+def get_boltzmann_rate(
+    system: System,
+    config: PeriodicSystemConfig,
+    fit_method: FitMethod[Any],
+    *,
+    n_repeats: int = 10,
+) -> float:
+    times = fit_method.get_fit_times(
+        system=system,
+        config=config,
+    )
+
+    isf = get_boltzmann_isf(
+        system,
+        config,
+        times,
+        n_repeats=n_repeats,
+    )
+
+    return fit_method.get_rate_from_isf(
+        isf,
+        system=system,
+        config=config,
+    )
+
+
 def _get_boltzmann_rate_from_hamiltonian(
     hamiltonian: SingleBasisDiagonalOperator[_ESB0],
     system: System,
@@ -569,7 +596,7 @@ def get_rate_against_momentum_linear_fit(
     return RateAgainstMomentumFitData(fit[1], fit[0])
 
 
-def get_effective_mass_data_from_rate_momentum(
+def get_effective_mass_data_from_linear_fit(
     data: ValueList[MomentumBasis],
     temperature: float,
 ) -> float:
@@ -579,7 +606,7 @@ def get_effective_mass_data_from_rate_momentum(
     )
 
 
-def get_effective_mass_data(
+def get_linear_fit_effective_mass_data(
     system: System,
     config: PeriodicSystemConfig,
     *,
@@ -593,14 +620,38 @@ def get_effective_mass_data(
         directions=directions,
     )
 
-    return get_effective_mass_data_from_rate_momentum(rate_data, config.temperature)
+    return get_effective_mass_data_from_linear_fit(rate_data, config.temperature)
 
 
 SimulationCondition = tuple[System, PeriodicSystemConfig, str]
 
 
+def get_free_particle_rate_for_conditions(
+    conditions: Iterable[SimulationCondition],
+) -> list[float]:
+    return [get_free_particle_rate(s, c) for (s, c, _) in conditions]
+
+
+def get_free_rate_against_momentum(
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    directions: list[tuple[int, ...]] | None = None,
+) -> ValueList[MomentumBasis]:
+    directions = _get_default_directions(config) if directions is None else directions
+
+    conditions = get_conditions_at_directions(system, config, directions)
+    rates = get_free_particle_rate_for_conditions(conditions)
+
+    basis = MomentumBasis(get_scattered_momentum(system, config, directions))
+    return {
+        "basis": basis,
+        "data": np.array(rates, dtype=np.complex128),
+    }
+
+
 @timed
-def get_effective_mass_against_condition_data(
+def get_linear_fit_effective_mass_against_condition_data(
     conditions: list[SimulationCondition],
     directions: list[tuple[int, ...]] | None = None,
     *,
@@ -613,7 +664,7 @@ def get_effective_mass_against_condition_data(
     )
 
     for j, (system, config, _) in enumerate(conditions):
-        data[j] = get_effective_mass_data(
+        data[j] = get_linear_fit_effective_mass_data(
             system,
             config,
             fit_method=fit_method,
@@ -623,6 +674,68 @@ def get_effective_mass_against_condition_data(
     return {
         "data": data.ravel(),
         "basis": FundamentalBasis(len(conditions)),
+    }
+
+
+def get_rate_against_condition_data(
+    conditions: list[SimulationCondition],
+    *,
+    fit_method: FitMethod[Any] | None = None,
+) -> ValueList[FundamentalBasis[int]]:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    n_conditions = len(conditions)
+    data = np.zeros(
+        (n_conditions),
+        dtype=np.complex128,
+    )
+
+    for j, (system, config, _) in enumerate(conditions):
+        data[j] = get_boltzmann_rate(system, config, fit_method)
+
+    return {
+        "data": data.ravel(),
+        "basis": FundamentalBasis(len(conditions)),
+    }
+
+
+def get_effective_mass_against_condition_data(
+    conditions: list[SimulationCondition],
+    *,
+    fit_method: FitMethod[Any] | None = None,
+) -> ValueList[FundamentalBasis[int]]:
+    rates = get_rate_against_condition_data(conditions, fit_method=fit_method)
+    free_rates = get_free_particle_rate_for_conditions(conditions)
+    data = np.array(free_rates) / rates["data"]
+
+    return {
+        "basis": rates["basis"],
+        "data": data.ravel(),
+    }
+
+
+def get_effective_mass_against_momentum_data(
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    directions: list[tuple[int, ...]] | None = None,
+    fit_method: FitMethod[Any] | None = None,
+) -> ValueList[MomentumBasis]:
+    rates = get_rate_against_momentum_data(
+        system,
+        config,
+        directions=directions,
+        fit_method=fit_method,
+    )
+    free_rates = get_free_rate_against_momentum(
+        system,
+        config,
+        directions=directions,
+    )
+    data = free_rates["data"] / rates["data"]
+
+    return {
+        "basis": rates["basis"],
+        "data": data.ravel(),
     }
 
 

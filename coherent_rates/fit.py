@@ -96,10 +96,9 @@ class FitMethod(ABC, Generic[T]):
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         ...
 
-    @classmethod
     @abstractmethod
     def _fit_param_initial_guess(
-        cls: type[Self],
+        self: Self,
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
     ) -> tuple[float, ...]:
@@ -192,6 +191,13 @@ def get_free_particle_time(
     return np.sqrt(system.mass / (Boltzmann * config.temperature * k**2))
 
 
+def get_free_particle_rate(
+    system: System,
+    config: PeriodicSystemConfig,
+) -> float:
+    return 1 / get_free_particle_time(system, config)
+
+
 @dataclass
 class GaussianParameters:
     """parameters for a gaussian fit."""
@@ -227,9 +233,8 @@ class GaussianMethod(FitMethod[GaussianParameters]):
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, 0], [1, np.inf])
 
-    @classmethod
     def _fit_param_initial_guess(
-        cls: type[Self],
+        self: Self,
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
     ) -> tuple[float, float]:
@@ -283,6 +288,15 @@ class GaussianParametersWithOffset(GaussianParameters):
 class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
     """Fit the data to a single Gaussian."""
 
+    def __init__(self: Self, *, truncate: bool = True) -> None:
+        self._truncate = truncate
+        super().__init__()
+
+    def __hash__(self: Self) -> int:
+        h = hashlib.sha256(usedforsecurity=False)
+        h.update(self.get_rate_label().encode())
+        return hash((int.from_bytes(h.digest(), "big"), self._truncate))
+
     @staticmethod
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
@@ -322,9 +336,8 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, 0, 0], [1, np.inf, 1])
 
-    @classmethod
     def _fit_param_initial_guess(
-        cls: type[Self],
+        self: Self,
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
     ) -> tuple[float, float, float]:
@@ -340,6 +353,9 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
     ) -> GaussianParametersWithOffset:
+        if not self._truncate:
+            return super().get_fit_from_isf(data, **info)
+
         # Stop trying to fit past the first non-decreasing ISF
         is_increasing = np.diff(np.abs(data["data"])) > 0
         first_increasing_idx = np.argmax(is_increasing).item()
@@ -370,7 +386,7 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
 class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameters]]):
     """Fit the data to a double Gaussian."""
 
-    def __init__(self: Self, ty: Literal["Fast", "Slow"]) -> None:  # noqa: D107
+    def __init__(self: Self, ty: Literal["Fast", "Slow"]) -> None:
         self._ty = ty
         super().__init__()
 
@@ -387,9 +403,8 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
             - 1000 * max(a + c - 1, 0)
         )
 
-    @classmethod
     def _fit_param_initial_guess(
-        cls: type[Self],
+        self: Self,
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
     ) -> tuple[float, float, float, float]:
@@ -486,10 +501,9 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, 0], [1, np.inf])
 
-    @classmethod
     def _fit_param_initial_guess(
-        cls: type[Self],
-        data: ValueList[_BT0],  # noqa: ARG003
+        self: Self,
+        data: ValueList[_BT0],  # noqa: ARG002
         **info: Unpack[FitInfo],
     ) -> tuple[float, float]:
         return (1, get_free_particle_time(**info))
@@ -519,7 +533,7 @@ class GaussianPlusExponentialMethod(
 ):
     """Fit the data to a gaussian plus an exponential."""
 
-    def __init__(self: Self, ty: Literal["Gaussian", "Exponential"]) -> None:  # noqa: D107
+    def __init__(self: Self, ty: Literal["Gaussian", "Exponential"]) -> None:
         self._ty = ty
         super().__init__()
 
@@ -563,10 +577,9 @@ class GaussianPlusExponentialMethod(
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
         return ([0, 0, 0, 0], [1, np.inf, 1, np.inf])
 
-    @classmethod
     def _fit_param_initial_guess(
-        cls: type[Self],
-        data: ValueList[_BT0],  # noqa: ARG003
+        self: Self,
+        data: ValueList[_BT0],  # noqa: ARG002
         **info: Unpack[FitInfo],
     ) -> tuple[float, float, float, float]:
         free_time = get_free_particle_time(**info)
