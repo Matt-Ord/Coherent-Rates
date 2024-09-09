@@ -1,0 +1,20 @@
+{
+    "id": "wannier90",
+    "version": "0.0.1",
+    "name": "Wannier 90",
+    "description": "Installs Wannier 90",
+    "options": {
+        "version": {
+            "type": "string",
+            "proposals": [
+                "3.1.0"
+            ],
+            "default": "3.1.0",
+            "description": "Select a version to install."
+        }
+    },
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils",
+        "ghcr.io/devcontainers/features/oryx"
+    ]
+}
