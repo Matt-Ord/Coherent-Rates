@@ -171,7 +171,7 @@ def plot_system_eigenvalues(
 ) -> None:
     wavefunctions = get_bloch_wavefunctions(system, config)
 
-    fig, _ = plot_wavepacket_eigenvalues_1d_k(wavefunctions)
+    fig, _, _ = plot_wavepacket_eigenvalues_1d_k(wavefunctions)
     fig.show()
 
     fig, _ = plot_wavepacket_eigenvalues_1d_x(wavefunctions)
@@ -470,7 +470,8 @@ def plot_band_resolved_boltzmann_isf(
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
     *,
     n_repeats: int = 10,
-) -> None:
+    ax: Axes | None = None,
+) -> tuple[Figure, Axes]:
     times = (
         get_default_isf_times(system=system, config=config) if times is None else times
     )
@@ -488,7 +489,8 @@ def plot_band_resolved_boltzmann_isf(
     fig, ax = plot_split_value_list_against_frequency(resolved_data)
     ax.set_title("Plot of the fourier transform of the ISF against time")  # type: ignore library type
     fig.show()
-    input()
+
+    return fig, ax
 
 
 def plot_rate_against_momentum(

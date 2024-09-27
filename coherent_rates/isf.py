@@ -314,7 +314,7 @@ def get_band_resolved_boltzmann_isf(
     *,
     n_repeats: int = 1,
 ) -> StatisticalValueList[TupleBasisLike[BasisLike[Any, Any], _BT0]]:
-    hamiltonian = get_hamiltonian(system, config)  #
+    hamiltonian = get_hamiltonian(system, config)
     bands = hamiltonian["basis"][0].wavefunctions["basis"][0][0]
     operator = get_instrument_biased_periodic_x(
         hamiltonian,
