@@ -16,9 +16,9 @@ from coherent_rates.system import (
 
 if __name__ == "__main__":
     config = PeriodicSystemConfig(
-        (20, 20),
-        (30, 30),
-        truncation=100,
+        (2, 1),
+        (35, 35),
+        truncation=150,
         direction=(1, 0),
         temperature=155,
     )
@@ -29,9 +29,9 @@ if __name__ == "__main__":
     fig.show()
     input()
 
-    plot_system_eigenstates_2d(system, config, states=[0])
-    plot_system_eigenvalues(system, config)
+    plot_system_eigenstates_2d(system, config, states=[0, 149])
     plot_system_bands(system, config)
+    plot_system_eigenvalues(system, config)
 
     times = EvenlySpacedTimeBasis(101, 1, -50, 1e-11)
     state = get_random_boltzmann_state(system, config)

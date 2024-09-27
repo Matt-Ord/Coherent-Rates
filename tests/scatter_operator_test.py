@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import numpy as np
 import pytest
@@ -21,6 +21,7 @@ from coherent_rates.scattering_operator import (
 from coherent_rates.solve import get_hamiltonian
 from coherent_rates.system import (
     HYDROGEN_NICKEL_SYSTEM_1D,
+    SODIUM_COPPER_SYSTEM_2D,
     System,
 )
 
@@ -44,30 +45,42 @@ def get_periodic_x_operator_as_sparse(
 
 
 @pytest.fixture()
-def system() -> System:
-    """Fixture to generate a random n between 2 and 20."""
-    return HYDROGEN_NICKEL_SYSTEM_1D
+def ndim() -> Literal[1, 2]:
+    np.random.default_rng()
+    return 1  # rng.choice([1, 2])
 
 
 @pytest.fixture()
-def config() -> PeriodicSystemConfig:
+def system(ndim: Literal[1, 2]) -> System:
+    """Fixture to generate a random n between 2 and 20."""
+    if ndim == 1:
+        return HYDROGEN_NICKEL_SYSTEM_1D
+    return SODIUM_COPPER_SYSTEM_2D
+
+
+@pytest.fixture()
+def config(ndim: Literal[1, 2]) -> PeriodicSystemConfig:
     """Fixture to generate a random n between 2 and 20."""
     rng = np.random.default_rng()
-    shape = rng.integers(1, 10)  # type: ignore unknown
-    resolution = rng.integers(3, 10)  # type: ignore unknown
+    if ndim == 1:
+        shape = rng.integers(1, 10)  # type: ignore unknown
+        resolution = rng.integers(3, 10)  # type: ignore unknown
+        return PeriodicSystemConfig(
+            (shape,),
+            (resolution,),
+            np.prod(resolution).item(),
+            temperature=155,
+            direction=tuple(rng.integers(1, 10) for _ in range(ndim)),  # type: ignore unknown
+        )
+    shape = rng.integers(1, 5, 2)  # type: ignore unknown
+    resolution = rng.integers(3, 5, 2)  # type: ignore unknown
     return PeriodicSystemConfig(
-        (shape,),
-        (resolution,),
+        (shape[0], shape[1]),
+        (resolution[0], resolution[1]),
         np.prod(resolution).item(),
         temperature=155,
+        direction=tuple(rng.integers(1, 10) for _ in range(ndim)),  # type: ignore unknown
     )
-
-
-@pytest.fixture()
-def direction() -> tuple[int, ...]:
-    """Fixture to generate a random n between 2 and 20."""
-    rng = np.random.default_rng()
-    return (rng.integers(1, 10),)  # type: ignore unknown
 
 
 def test_sparse_periodic_x_has_correct_nonzero(
@@ -84,21 +97,21 @@ def test_sparse_periodic_x_has_correct_nonzero(
 
     sparse = get_periodic_x_operator_sparse(basis, direction)
 
-    np.testing.assert_equal(
+    np.testing.assert_allclose(
         np.count_nonzero(np.logical_not(np.isclose(sparse["data"], 0))),
         np.count_nonzero(np.logical_not(np.isclose(converted["data"], 0))),
+        atol=1e-10,
     )
 
 
 def test_sparse_periodic_x_equals_converted(
     system: System,
     config: PeriodicSystemConfig,
-    direction: tuple[int, ...],
 ) -> None:
     basis = get_hamiltonian(system, config)["basis"][0]
     # Basis of the bloch wavefunction list
-    sparse = get_periodic_x_operator_sparse(basis, direction)
-    full_as_sparse = get_periodic_x_operator_as_sparse(basis, direction)
+    sparse = get_periodic_x_operator_sparse(basis, config.direction)
+    full_as_sparse = get_periodic_x_operator_as_sparse(basis, config.direction)
     np.testing.assert_array_almost_equal(
         sparse["data"],
         full_as_sparse["data"],
@@ -108,24 +121,23 @@ def test_sparse_periodic_x_equals_converted(
 def test_sparse_periodic_x_is_correct_in_momentum_basis(
     system: System,
     config: PeriodicSystemConfig,
-    direction: tuple[int, ...],
 ) -> None:
     basis = get_hamiltonian(system, config)["basis"][0]
 
     basis_k = stacked_basis_as_fundamental_momentum_basis(basis)
     converted = convert_operator_to_basis(
-        get_periodic_x_operator(basis_k, direction),
+        get_periodic_x_operator(basis_k, config.direction),
         TupleBasis(basis_k, basis_k),
     )
     # Basis of the bloch wavefunction list
-    sparse = get_periodic_x_operator_sparse(basis, direction)
+    sparse = get_periodic_x_operator_sparse(basis, config.direction)
     full = convert_operator_to_basis(
         as_operator_from_sparse_scattering_operator(sparse),
         TupleBasis(basis_k, basis_k),
     )
     np.testing.assert_equal(
-        np.count_nonzero(np.logical_not(np.isclose(full["data"], 0))),
         np.count_nonzero(np.logical_not(np.isclose(converted["data"], 0))),
+        np.count_nonzero(np.logical_not(np.isclose(full["data"], 0))),
     )
 
     tolerance = 1e-15

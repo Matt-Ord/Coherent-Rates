@@ -84,7 +84,9 @@ def _get_bloch_wavefunctions_path(
     system: System,
     config: PeriodicSystemConfig,
 ) -> Path:
-    return Path(f"data/{hash((system,config))}.wavefunctions.npz")
+    return Path(
+        f"data/{hash((system,(config.shape,config.resolution,config.n_bands)))}.wavefunctions.npz",
+    )
 
 
 @npy_cached_dict(_get_bloch_wavefunctions_path, load_pickle=True)
@@ -113,6 +115,20 @@ def get_bloch_wavefunctions(
     )
 
 
+def _get_hamiltonian_path(
+    system: System,
+    config: PeriodicSystemConfig,
+) -> Path:
+    return Path(
+        f"data/{hash((system, (config.shape, config.resolution, config.n_bands)))}.hamiltonian.npz",
+    )
+
+
+@npy_cached_dict(
+    _get_hamiltonian_path,
+    load_pickle=True,
+    default_call="load_or_call_uncached",
+)
 @timed
 def get_hamiltonian(
     system: System,

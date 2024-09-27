@@ -6,7 +6,15 @@ import numpy as np
 from matplotlib.axes import Axes
 from scipy.constants import Boltzmann, electron_volt, proton_mass  # type: ignore lib
 from surface_potential_analysis.potential.plot import plot_potential_1d_x
-from surface_potential_analysis.state_vector.plot import plot_state_1d_x
+from surface_potential_analysis.state_vector.conversion import (
+    convert_state_vector_to_basis,
+)
+from surface_potential_analysis.state_vector.plot import (
+    animate_state_over_list_2d_x,
+    plot_state_1d_x,
+    plot_state_2d_k,
+    plot_state_2d_x,
+)
 from surface_potential_analysis.state_vector.plot_value_list import (
     plot_value_list_against_momentum,
 )
@@ -19,6 +27,7 @@ from surface_potential_analysis.wavepacket.localization._wannier90 import (
     get_localization_operator_wannier90_individual_bands,
 )
 from surface_potential_analysis.wavepacket.plot import (
+    plot_wavepacket_eigenvalues_1d_k,
     plot_wavepacket_localized_effective_mass_against_energy,
     plot_wavepacket_transformed_energy_1d,
     plot_wavepacket_transformed_energy_effective_mass_against_energy,
@@ -37,15 +46,26 @@ from coherent_rates.isf import (
     get_free_rate_against_momentum,
 )
 from coherent_rates.plot import (
+    plot_band_resolved_boltzmann_isf,
     plot_effective_mass_against_condition,
     plot_effective_mass_against_momentum,
     plot_effective_mass_against_scattered_energy,
     plot_isf_with_fit,
     plot_rate_against_momentum,
 )
-from coherent_rates.solve import get_bloch_wavefunctions
+from coherent_rates.scattering_operator import (
+    apply_scattering_operator_to_state,
+    get_instrument_biased_periodic_x,
+)
+from coherent_rates.solve import (
+    get_bloch_wavefunctions,
+    get_hamiltonian,
+    solve_schrodinger_equation,
+)
+from coherent_rates.state import get_random_coherent_state
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
+    SODIUM_COPPER_SYSTEM_2D,
     FreeSystem,
 )
 
@@ -197,6 +217,21 @@ def _plot_isf_below_and_above_barrier_width() -> None:
     )
     fig.show()
 
+    config = config.with_direction((50,)).with_shape((100,)).with_temperature(100)
+    system = system.with_barrier_energy(0.0)
+    fig, _ax = plot_isf_with_fit(
+        isf,
+        method,
+        system=system,
+        config=config,
+    )
+    fig.show()
+    plot_band_resolved_boltzmann_isf(
+        system,
+        config,
+        GaussianMethod().get_fit_times(system, config),
+    )
+
 
 def _compare_small_k_effective_mass_against_temperature() -> None:
     config = PeriodicSystemConfig(
@@ -330,6 +365,16 @@ def _effective_mass_demonstration() -> None:
     system = SODIUM_COPPER_BRIDGE_SYSTEM_1D
     wavefunctions = get_bloch_wavefunctions(system, config)
 
+    fig, _, lines = plot_wavepacket_eigenvalues_1d_k(
+        wavefunctions,
+        bands=list(range(10)),
+    )
+
+    for line in lines:
+        line.set_marker("")
+        line.set_linestyle("-")
+    fig.show()
+
     fig, _ax, _ = plot_wavepacket_transformed_energy_1d(
         wavefunctions,
         free_mass=system.mass,
@@ -400,9 +445,66 @@ def _effective_mass_demonstration() -> None:
     fig.show()
 
 
-if __name__ == "__main__":
-    _effective_mass_demonstration()
+def _2d_state_evolved_scattered_demo() -> None:
+    config = PeriodicSystemConfig(
+        (5, 5),
+        (30, 30),
+        # truncation=200,
+        direction=(1, 0),
+        temperature=100,
+    )
+    system = SODIUM_COPPER_SYSTEM_2D
+    sigma = system.lattice_constant / 10
+    initial_state = get_random_coherent_state(system, config, sigma)
 
+    fig, _, _ = plot_state_2d_k(initial_state)
+    fig.show()
+    fig, _, _ = plot_state_2d_x(initial_state)
+    fig.show()
+
+    fig, _, _ = plot_state_2d_x(
+        convert_state_vector_to_basis(
+            initial_state,
+            get_hamiltonian.call_cached(system, config)["basis"][0],
+        ),
+    )
+    fig.show()
+    times = GaussianMethod().get_fit_times(system=system, config=config)
+
+    states = solve_schrodinger_equation(system, config, initial_state, times)
+    fig, _ax, _anim0 = animate_state_over_list_2d_x(states)
+    fig.show()
+
+    hamiltonian = get_hamiltonian.call_cached(system, config)
+    scattering_operator = get_instrument_biased_periodic_x(
+        hamiltonian,
+        config.direction,
+        config.scattered_energy_range,
+    )
+    scattered_state = apply_scattering_operator_to_state(
+        scattering_operator,
+        initial_state,
+    )
+
+    fig, ax, _ = plot_state_2d_k(scattered_state)
+    ax.set_title("scattered_state k")
+    fig.show()
+    fig, ax, _ = plot_state_2d_x(scattered_state)
+    ax.set_title("scattered_state x")
+    fig.show()
+
+    states = solve_schrodinger_equation(system, config, scattered_state, times)
+    fig, ax, _anim1 = animate_state_over_list_2d_x(states)
+    ax.set_title("evolved scattered_state x")
+    fig.show()
+    input()
+
+
+if __name__ == "__main__":
+    # _effective_mass_demonstration()
+    _2d_state_evolved_scattered_demo()
+
+    input()
     _compare_rate_against_free_surface()
     _compare_rate_against_temperature()
     _plot_isf_below_and_above_barrier_width()

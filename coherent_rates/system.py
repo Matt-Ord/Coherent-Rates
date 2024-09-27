@@ -197,7 +197,7 @@ class FundamentalPeriodicSystem(PeriodicSystem):
 class FreeSystem(System):
     """A free periodic system."""
 
-    def __init__(self, other: System) -> None:  # noqa: ANN101, D107
+    def __init__(self, other: System) -> None:  # noqa: ANN101
         self._other = other
         super().__init__(other.id, 0, other.lattice_constant, other.mass)
 

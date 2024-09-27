@@ -12,12 +12,18 @@ from coherent_rates.isf import (
 )
 from coherent_rates.plot import plot_isf_with_fit
 from coherent_rates.system import (
-    SODIUM_COPPER_BRIDGE_SYSTEM_1D,
+    SODIUM_COPPER_SYSTEM_2D,
 )
 
 if __name__ == "__main__":
-    config = PeriodicSystemConfig((50,), (100,), direction=(10,), temperature=60)
-    system = SODIUM_COPPER_BRIDGE_SYSTEM_1D
+    config = PeriodicSystemConfig(
+        (20, 20),
+        (30, 30),
+        truncation=100,
+        direction=(30, 0),
+        temperature=155,
+    )
+    system = SODIUM_COPPER_SYSTEM_2D
 
     times = GaussianPlusExponentialMethod("Gaussian").get_fit_times(
         system=system,
@@ -38,7 +44,7 @@ if __name__ == "__main__":
     # Gaussian fitting
     fig, ax = plot_isf_with_fit(
         isf,
-        GaussianMethod(),
+        GaussianMethod(truncate=False),
         system=system,
         config=config,
     )
