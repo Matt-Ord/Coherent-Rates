@@ -39,7 +39,7 @@ from surface_potential_analysis.state_vector.plot import (
 from surface_potential_analysis.state_vector.state_vector_list import (
     calculate_inner_products_elementwise,
 )
-from surface_potential_analysis.util.decorators import npy_cached_dict, timed
+from surface_potential_analysis.util.decorators import cached, timed
 from surface_potential_analysis.wavepacket.get_eigenstate import BlochBasis
 
 from coherent_rates.config import PeriodicSystemConfig
@@ -268,12 +268,10 @@ def _get_boltzmann_isf_data_path(
     *,
     n_repeats: int = 10,
 ) -> Path:
-    return Path(
-        f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.npz",
-    )
+    return Path(f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.isf")
 
 
-@npy_cached_dict(_get_boltzmann_isf_data_path, load_pickle=True)
+@cached(_get_boltzmann_isf_data_path)
 @timed
 def get_boltzmann_isf(
     system: System,
@@ -435,7 +433,7 @@ def _get_rate_against_momentum_data_path(
     directions = _get_default_directions(config) if directions is None else directions
     return Path(
         f"data/{hash((system, config))}.{hash(fit_method)}"
-        f".{hash((directions[0], directions[-1], len(directions)))}.npz",
+        f".{hash((directions[0], directions[-1], len(directions)))}.rates",
     )
 
 
@@ -492,7 +490,7 @@ def _get_boltzmann_rate_from_hamiltonian(
     )
 
 
-@npy_cached_dict(_get_rate_against_momentum_data_path, load_pickle=True)
+@cached(_get_rate_against_momentum_data_path)
 def get_rate_against_momentum_data(
     system: System,
     config: PeriodicSystemConfig,

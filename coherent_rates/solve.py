@@ -24,7 +24,7 @@ from surface_potential_analysis.stacked_basis.build import (
 from surface_potential_analysis.stacked_basis.conversion import (
     stacked_basis_as_fundamental_momentum_basis,
 )
-from surface_potential_analysis.util.decorators import npy_cached_dict, timed
+from surface_potential_analysis.util.decorators import cached, timed
 from surface_potential_analysis.wavepacket.get_eigenstate import (
     BlochBasis,
     get_full_bloch_hamiltonian,
@@ -58,7 +58,6 @@ if TYPE_CHECKING:
 _L0Inv = TypeVar("_L0Inv", bound=int)
 
 
-@timed
 def _get_full_hamiltonian(
     system: System,
     shape: tuple[_L0Inv, ...],
@@ -85,11 +84,11 @@ def _get_bloch_wavefunctions_path(
     config: PeriodicSystemConfig,
 ) -> Path:
     return Path(
-        f"data/{hash((system,(config.shape,config.resolution,config.n_bands)))}.wavefunctions.npz",
+        f"data/{hash((system,(config.shape,config.resolution,config.n_bands)))}.wavefunctions.wavefunctions",
     )
 
 
-@npy_cached_dict(_get_bloch_wavefunctions_path, load_pickle=True)
+@cached(_get_bloch_wavefunctions_path)
 def get_bloch_wavefunctions(
     system: System,
     config: PeriodicSystemConfig,
@@ -119,14 +118,12 @@ def _get_hamiltonian_path(
     system: System,
     config: PeriodicSystemConfig,
 ) -> Path:
-    return Path(
-        f"data/{hash((system, (config.shape, config.resolution, config.n_bands)))}.hamiltonian.npz",
-    )
+    filename = hash((system, (config.shape, config.resolution, config.n_bands)))
+    return Path(f"data/{filename}.hamiltonian")
 
 
-@npy_cached_dict(
+@cached(
     _get_hamiltonian_path,
-    load_pickle=True,
     default_call="load_or_call_uncached",
 )
 @timed
