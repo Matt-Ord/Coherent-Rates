@@ -326,15 +326,18 @@ def plot_pair_system_evolution_1d(
 
 _BT0 = TypeVar("_BT0", bound=BasisWithTimeLike[Any, Any])
 
+T = TypeVar("T")
+
 
 def plot_isf_with_fit(
     data: ValueList[_BT0],
-    method: FitMethod[Any],
+    method: FitMethod[T],
     *,
     system: System,
     config: PeriodicSystemConfig,
 ) -> tuple[Figure, Axes]:
-    fig, ax, line = plot_value_list_against_time(data)
+    fig, ax, line = plot_value_list_against_time(data, measure="real")
+    _, _, line = plot_value_list_against_time(data, measure="imag", ax=ax)
     line.set_label("ISF")
 
     fit = method.get_fit_from_isf(

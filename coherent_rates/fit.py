@@ -120,7 +120,7 @@ class FitMethod(ABC, Generic[T]):
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
     ) -> T:
-        y_data = get_measured_data(data["data"], measure="abs")
+        y_data = get_measured_data(data["data"], measure="real")
         delta_t = np.max(data["basis"].times) - np.min(data["basis"].times)
         dt = (delta_t / data["basis"].times.size).item()
 
@@ -421,8 +421,8 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
     ) -> tuple[float, float, float, float]:
         free_time = get_free_particle_time(**info)
         offset = 0.8 * np.min(np.abs(data["data"]))
-        initial_height = (1 - offset) / 2
-        return (initial_height, 0.5 * free_time, initial_height, 2 * free_time)
+        initial_height = np.abs(data["data"][0]) - offset / 2
+        return (initial_height, free_time, initial_height, 2 * free_time)
 
     @staticmethod
     def _params_from_fit(
