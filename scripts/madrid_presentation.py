@@ -1,3 +1,5 @@
+"""Script to generate the plots required for the Madrid presentation."""
+
 from __future__ import annotations
 
 from typing import cast
@@ -226,10 +228,11 @@ def _plot_isf_below_and_above_barrier_width() -> None:
         config=config,
     )
     fig.show()
+
     plot_band_resolved_boltzmann_isf(
         system,
         config,
-        GaussianMethod().get_fit_times(system, config),
+        GaussianMethod().get_fit_times(system=system, config=config),
     )
 
 
@@ -487,15 +490,15 @@ def _2d_state_evolved_scattered_demo() -> None:
     )
 
     fig, ax, _ = plot_state_2d_k(scattered_state)
-    ax.set_title("scattered_state k")
+    ax.set_title("scattered_state k")  # type: ignore unknown
     fig.show()
     fig, ax, _ = plot_state_2d_x(scattered_state)
-    ax.set_title("scattered_state x")
+    ax.set_title("scattered_state x")  # type: ignore unknown
     fig.show()
 
     states = solve_schrodinger_equation(system, config, scattered_state, times)
     fig, ax, _anim1 = animate_state_over_list_2d_x(states)
-    ax.set_title("evolved scattered_state x")
+    ax.set_title("evolved scattered_state x")  # type: ignore unknown
     fig.show()
     input()
 
