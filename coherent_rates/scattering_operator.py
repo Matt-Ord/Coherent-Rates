@@ -74,20 +74,19 @@ class SparseScatteringOperator(TypedDict, Generic[_B0_co, _B1_co]):
 def as_operator_from_sparse_scattering_operator(
     operator: SparseScatteringOperator[_B0, _B0],
 ) -> SingleBasisOperator[_B0]:
-    # Basis of the bloch wavefunction list
+    # Basis of the bloch wavefunction list [band basis, list basis]
     basis = operator["basis"][0].wavefunctions["basis"][0]
-    stacked = operator["data"].reshape(
-        basis[0].n,
-        basis[0].n,
-        -1,
-    )
+    # in shape (band, band, list)
+    stacked = operator["data"].reshape(basis[0].n, basis[0].n, -1)
 
+    # in shape (band, list, band, list)
     rolled = np.einsum("ijk,kl->ikjl", stacked, np.eye(stacked.shape[-1])).reshape(  # type: ignore bad types
         basis[0].n,
         *basis[1].shape,
         basis[0].n,
         *basis[1].shape,
     )
+    # Roll the lhs basis.
     data = np.roll(
         rolled,
         operator["direction"],
@@ -208,9 +207,7 @@ def get_periodic_x_operator_sparse(
             tuple(j + s for (j, s) in zip(nk_in, direction)),
             mode="wrap",
         )
-        nk_out = tuple(
-            k[i] for k, i in zip(stacked_nk_points, util.get_stacked_index(idx_out))
-        )
+        nk_out = tuple(k[idx_out] for k in stacked_nk_points)
 
         # Direction in the wavefunction space
         # Not this is not the same for all idx_in, idx_out

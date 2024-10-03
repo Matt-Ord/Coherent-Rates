@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, TypeVar, cast
@@ -167,52 +168,6 @@ def _get_isf_from_hamiltonian(
     )
 
 
-def _get_states_per_band(
-    states: StateVectorList[
-        _B1,
-        BlochBasis[_B0],
-    ],
-) -> StateVectorList[
-    TupleBasis[_B0, _B1],
-    TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
-]:
-    basis = states["basis"][1].wavefunctions["basis"][0]
-
-    data = states["data"].reshape(-1, *basis.shape).swapaxes(0, 1)
-    return {
-        "basis": TupleBasis(TupleBasis(basis[0], states["basis"][0]), basis[1]),
-        "data": data.ravel(),
-    }
-
-
-def _get_band_resolved_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[_ESB1],
-    operator: SparseScatteringOperator[_ESB0, _ESB0],
-    initial_state: StateVector[_B1],
-    times: _BT0,
-) -> ValueList[TupleBasis[Any, _BT0]]:
-    (
-        state_evolved_scattered,
-        state_scattered_evolved,
-    ) = _get_isf_pair_states_from_hamiltonian(
-        hamiltonian,
-        operator,
-        initial_state,
-        times,
-    )
-    per_band_scattered_evolved = _get_states_per_band(
-        state_scattered_evolved,
-    )
-    per_band_evolved_scattered = _get_states_per_band(
-        state_evolved_scattered,
-    )
-
-    return calculate_inner_products_elementwise(
-        per_band_scattered_evolved,
-        per_band_evolved_scattered,
-    )
-
-
 def get_isf(
     system: System,
     config: PeriodicSystemConfig,
@@ -244,13 +199,17 @@ def _get_boltzmann_isf_from_hamiltonian(
         direction=config.direction,
         energy_range=config.scattered_energy_range,
     )
-    for i in range(n_repeats):
+
+    def _calculate_isf(i: int) -> None:
         state = get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
             config.temperature,
         )
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
         isf_data[i, :] = data["data"]
+
+    with ThreadPoolExecutor() as executor:
+        executor.map(_calculate_isf, range(n_repeats))
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
@@ -305,6 +264,52 @@ def get_analytical_isf(
     return {"data": data, "basis": times}
 
 
+def _get_states_per_band(
+    states: StateVectorList[
+        _B1,
+        BlochBasis[_B0],
+    ],
+) -> StateVectorList[
+    TupleBasis[_B0, _B1],
+    TupleBasisLike[*tuple[FundamentalTransformedBasis[Any], ...]],
+]:
+    basis = states["basis"][1].wavefunctions["basis"][0]
+
+    data = states["data"].reshape(-1, *basis.shape).swapaxes(0, 1)
+    return {
+        "basis": TupleBasis(TupleBasis(basis[0], states["basis"][0]), basis[1]),
+        "data": data.ravel(),
+    }
+
+
+def _get_band_resolved_isf_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[_ESB1],
+    operator: SparseScatteringOperator[_ESB0, _ESB0],
+    initial_state: StateVector[_B1],
+    times: _BT0,
+) -> ValueList[TupleBasis[Any, _BT0]]:
+    (
+        state_evolved_scattered,
+        state_scattered_evolved,
+    ) = _get_isf_pair_states_from_hamiltonian(
+        hamiltonian,
+        operator,
+        initial_state,
+        times,
+    )
+    per_band_scattered_evolved = _get_states_per_band(
+        state_scattered_evolved,
+    )
+    per_band_evolved_scattered = _get_states_per_band(
+        state_evolved_scattered,
+    )
+
+    return calculate_inner_products_elementwise(
+        per_band_scattered_evolved,
+        per_band_evolved_scattered,
+    )
+
+
 def get_band_resolved_boltzmann_isf(
     system: System,
     config: PeriodicSystemConfig,
@@ -322,7 +327,7 @@ def get_band_resolved_boltzmann_isf(
 
     isf_data = np.zeros((n_repeats, bands.n * times.n), dtype=np.complex128)
 
-    for i in range(n_repeats):
+    def _calculate_isf(i: int) -> None:
         state = get_random_boltzmann_state_from_hamiltonian(
             hamiltonian,
             config.temperature,
@@ -334,6 +339,9 @@ def get_band_resolved_boltzmann_isf(
             times,
         )
         isf_data[i, :] = data["data"]
+
+    with ThreadPoolExecutor() as executor:
+        executor.map(_calculate_isf, range(n_repeats))
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
@@ -380,7 +388,8 @@ def get_coherent_isf(
     )
 
     isf_data = np.zeros((2 * n_repeats, times.n), dtype=np.complex128)
-    for i in range(n_repeats):
+
+    def _calculate_isf(i: int) -> None:
         x0, k0 = get_random_coherent_coordinates(system, config)
 
         state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
@@ -391,6 +400,9 @@ def get_coherent_isf(
         state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
         isf_data[i + n_repeats, :] = data["data"]
+
+    with ThreadPoolExecutor() as executor:
+        executor.map(_calculate_isf, range(n_repeats))
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
