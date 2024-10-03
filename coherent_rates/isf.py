@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, TypeVar, cast
@@ -208,8 +207,8 @@ def _get_boltzmann_isf_from_hamiltonian(
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
         isf_data[i, :] = data["data"]
 
-    with ThreadPoolExecutor() as executor:
-        executor.map(_calculate_isf, range(n_repeats))
+    for i in range(n_repeats):
+        _calculate_isf(i)
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
@@ -340,8 +339,8 @@ def get_band_resolved_boltzmann_isf(
         )
         isf_data[i, :] = data["data"]
 
-    with ThreadPoolExecutor() as executor:
-        executor.map(_calculate_isf, range(n_repeats))
+    for i in range(n_repeats):
+        _calculate_isf(i)
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
@@ -401,8 +400,8 @@ def get_coherent_isf(
         data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
         isf_data[i + n_repeats, :] = data["data"]
 
-    with ThreadPoolExecutor() as executor:
-        executor.map(_calculate_isf, range(n_repeats))
+    for i in range(n_repeats):
+        _calculate_isf(i)
 
     mean = np.mean(isf_data, axis=0, dtype=np.complex128)
     sd = np.std(isf_data, axis=0, dtype=np.complex128)
