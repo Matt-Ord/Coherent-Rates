@@ -11,8 +11,8 @@ from coherent_rates.fit import (
     GaussianMethodWithOffset,
 )
 from coherent_rates.plot import (
+    plot_isf_fit_for_directions,
     plot_rate_against_momentum,
-    plot_rate_against_momentum_isf_fit,
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     _test_convergence_with_shape(system, config, directions=directions)
     _test_convergence_with_resolution(system, config, directions=directions)
     _test_convergence_with_truncation(system, config, directions=directions)
-    plot_rate_against_momentum_isf_fit(
+    plot_isf_fit_for_directions(
         system,
         config,
         directions=directions,

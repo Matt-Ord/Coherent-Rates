@@ -66,7 +66,7 @@ class FitMethod(ABC, Generic[T]):
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
         ...
 
     @staticmethod
@@ -124,10 +124,16 @@ class FitMethod(ABC, Generic[T]):
         delta_t = np.max(data["basis"].times) - np.min(data["basis"].times)
         dt = (delta_t / data["basis"].times.size).item()
 
+        def _fit_fn(
+            x: np.ndarray[Any, np.dtype[np.float64]],
+            *params: *tuple[float, ...],
+        ) -> np.ndarray[Any, np.dtype[np.float64]]:
+            return self._fit_fn(x, *params).astype(np.float64)
+
         parameters, _covariance = cast(
             tuple[list[float], Any],
             curve_fit(
-                self._fit_fn,
+                _fit_fn,
                 data["basis"].times / dt,
                 y_data,
                 p0=self._scale_params(
@@ -222,9 +228,9 @@ class GaussianMethod(FitMethod[GaussianParameters]):
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
         a, b = params
-        return (1 - a) + a * np.exp(-1 * np.square(x / b) / 2)
+        return ((1 - a) + a * np.exp(-1 * np.square(x / b) / 2)).astype(np.complex128)
 
     @staticmethod
     def _params_from_fit(
@@ -312,13 +318,13 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
         a, b, offset = params
         return (
             offset
             + a * np.exp(-1 * np.square(x / b) / 2)
             + 1000 * max(offset + a - 1, 0)
-        )
+        ).astype(np.complex128)
 
     @staticmethod
     def _params_from_fit(
@@ -405,14 +411,14 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
         a, b, c, d = params
         return (
             (1 - a - c)
             + a * np.exp(-1 * np.square(x / b) / 2)
             + c * np.exp(-1 * np.square(x / d) / 2)
             - 1000 * max(a + c - 1, 0)
-        )
+        ).astype(np.complex128)
 
     def _fit_param_initial_guess(
         self: Self,
@@ -420,9 +426,16 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
         **info: Unpack[FitInfo],
     ) -> tuple[float, float, float, float]:
         free_time = get_free_particle_time(**info)
-        offset = 0.8 * np.min(np.abs(data["data"]))
-        initial_height = np.abs(data["data"][0]) - offset / 2
-        return (initial_height, free_time, initial_height, 2 * free_time)
+        min_height = 0.8 * np.min(np.abs(data["data"]))
+        initial_height = np.abs(data["data"][np.argmin(np.abs(data["basis"].times))])
+        decay_height = np.average(np.abs(data["data"][data["data"].size // 2 :]))
+
+        return (
+            initial_height - decay_height,
+            0.5 * free_time,
+            decay_height - min_height,
+            1.2 * free_time,
+        )
 
     @staticmethod
     def _params_from_fit(
@@ -485,9 +498,9 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
         a, b = params
-        return (1 - a) + a * np.exp(-1 * x / b)
+        return ((1 - a) + a * np.exp(-1 * x / b)).astype(np.complex128)
 
     @staticmethod
     def _params_from_fit(
@@ -552,7 +565,7 @@ class GaussianPlusExponentialMethod(
     def _fit_fn(
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
-    ) -> np.ndarray[Any, np.dtype[np.float64]]:
+    ) -> np.ndarray[Any, np.dtype[np.complex128]]:
         a, b, c, d = params
         return (
             (1 - a - c)
@@ -560,7 +573,7 @@ class GaussianPlusExponentialMethod(
             + c * np.exp(-1 * x / d)
             - 1000 * max(np.sign(b - d), 0)
             - 1000 * max(a + c - 1, 0)
-        )
+        ).astype(np.complex128)
 
     @staticmethod
     def _params_from_fit(
