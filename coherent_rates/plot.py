@@ -336,9 +336,14 @@ def plot_isf_with_fit(
     system: System,
     config: PeriodicSystemConfig,
 ) -> tuple[Figure, Axes]:
-    fig, ax, line = plot_value_list_against_time(data, measure="real")
+    fig, ax = get_figure(None)
+    fig, ax, line = plot_value_list_against_time(data, measure="abs", ax=ax)
+    line.set_label("ISF (abs)")
+    fig, ax, line = plot_value_list_against_time(data, measure="real", ax=ax)
+    line.set_label("ISF (real)")
     _, _, line = plot_value_list_against_time(data, measure="imag", ax=ax)
-    line.set_label("ISF")
+    line.set_label("ISF (imag)")
+    fig.show()
 
     fit = method.get_fit_from_isf(
         data,
@@ -347,8 +352,10 @@ def plot_isf_with_fit(
     )
     fitted_data = method.get_fitted_data(fit, data["basis"])
 
-    fig, ax, line = plot_value_list_against_time(fitted_data, ax=ax)
-    line.set_label("Fit")
+    fig, ax, line = plot_value_list_against_time(fitted_data, ax=ax, measure="real")
+    line.set_label("Fit (real)")
+    fig, ax, line = plot_value_list_against_time(fitted_data, ax=ax, measure="imag")
+    line.set_label("Fit (imag)")
 
     ax.legend()  # type: ignore bad types
     return (fig, ax)
@@ -370,10 +377,8 @@ def plot_isf_fit_for_conditions(
         ax.set_title(f"ISF with fit for {label}")  # type: ignore unknown
         fig.show()
 
-    input()
 
-
-def plot_rate_against_momentum_isf_fit(
+def plot_isf_fit_for_directions(
     system: System,
     config: PeriodicSystemConfig,
     *,
@@ -381,6 +386,45 @@ def plot_rate_against_momentum_isf_fit(
     directions: list[tuple[int, ...]],
 ) -> None:
     plot_isf_fit_for_conditions(
+        get_conditions_at_directions(system, config, directions),
+        fit_method=fit_method,
+    )
+
+
+def plot_transformed_isf_for_conditions(
+    conditions: list[SimulationCondition],
+    *,
+    fit_method: FitMethod[Any] | None = None,
+) -> None:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    for system, config, label in conditions:
+        isf = get_boltzmann_isf(
+            system,
+            config,
+            fit_method.get_fit_times(system=system, config=config),
+        )
+
+        fig, ax, line = plot_value_list_against_frequency(isf)
+        line.set_label("abs ISF")
+        fig, ax, line = plot_value_list_against_frequency(isf, measure="imag", ax=ax)
+        line.set_label("imag ISF")
+        fig, ax, line = plot_value_list_against_frequency(isf, measure="real", ax=ax)
+        line.set_label("real ISF")
+        ax.legend()  # type: ignore library type
+        ax.set_title(f"Plot of the fourier transform of the ISF ({label})")  # type: ignore library type
+        fig.show()
+
+    input()
+
+
+def plot_transformed_isf_for_directions(
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    directions: list[tuple[int, ...]],
+) -> None:
+    plot_transformed_isf_for_conditions(
         get_conditions_at_directions(system, config, directions),
         fit_method=fit_method,
     )
