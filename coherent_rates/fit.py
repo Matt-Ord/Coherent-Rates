@@ -18,6 +18,7 @@ from typing import (
 )
 
 import numpy as np
+import scipy.signal  # type: ignore library type
 from scipy.constants import Boltzmann  # type: ignore library type
 from scipy.optimize import curve_fit  # type: ignore library type
 from surface_potential_analysis.basis.time_basis_like import (
@@ -128,7 +129,7 @@ class FitMethod(ABC, Generic[T]):
             x: np.ndarray[Any, np.dtype[np.float64]],
             *params: *tuple[float, ...],
         ) -> np.ndarray[Any, np.dtype[np.float64]]:
-            return self._fit_fn(x, *params).astype(np.float64)
+            return np.real(self._fit_fn(x, *params))
 
         parameters, _covariance = cast(
             tuple[list[float], Any],
@@ -292,17 +293,17 @@ class GaussianMethod(FitMethod[GaussianParameters]):
         self: Self,
         **info: Unpack[FitInfo],
     ) -> EvenlySpacedTimeBasis[Any, Any, Any]:
-        return EvenlySpacedTimeBasis(100, 1, 0, 4 * get_free_particle_time(**info))
+        return EvenlySpacedTimeBasis(100, 1, 0, 8 * get_free_particle_time(**info))
 
 
 @dataclass
-class GaussianParametersWithOffset(GaussianParameters):
+class FitOffset:
     """parameters for a gaussian fit."""
 
     offset: float
 
 
-class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
+class GaussianMethodWithOffset(FitMethod[tuple[GaussianParameters, FitOffset]]):
     """Fit the data to a single Gaussian."""
 
     def __init__(self: Self, *, truncate: bool = True) -> None:
@@ -328,18 +329,20 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
 
     @staticmethod
     def _params_from_fit(
-        fit: GaussianParametersWithOffset,
+        fit: tuple[GaussianParameters, FitOffset],
     ) -> tuple[float, float, float]:
-        return (fit.amplitude, fit.width, fit.offset)
+        return (fit[0].amplitude, fit[0].width, fit[1].offset)
 
     @staticmethod
     def _fit_from_params(
         *params: *tuple[float, ...],
-    ) -> GaussianParametersWithOffset:
-        return GaussianParametersWithOffset(
-            params[0],
-            np.abs(params[1]),
-            params[2],
+    ) -> tuple[GaussianParameters, FitOffset]:
+        return (
+            GaussianParameters(
+                params[0],
+                np.abs(params[1]),
+            ),
+            FitOffset(params[2]),
         )
 
     @staticmethod
@@ -369,7 +372,7 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
         self: Self,
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
-    ) -> GaussianParametersWithOffset:
+    ) -> tuple[GaussianParameters, FitOffset]:
         if not self._truncate:
             return super().get_fit_from_isf(data, **info)
 
@@ -386,9 +389,9 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
 
     def get_rate_from_fit(
         self: Self,
-        fit: GaussianParametersWithOffset,
+        fit: tuple[GaussianParameters, FitOffset],
     ) -> float:
-        return 1 / fit.width
+        return 1 / fit[0].width
 
     def get_rate_label(self: Self) -> str:
         return "Gaussian (with offset)"
@@ -400,7 +403,9 @@ class GaussianMethodWithOffset(FitMethod[GaussianParametersWithOffset]):
         return EvenlySpacedTimeBasis(100, 1, 0, 4 * get_free_particle_time(**info))
 
 
-class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameters]]):
+class DoubleGaussianMethod(
+    FitMethod[tuple[GaussianParameters, GaussianParameters, FitOffset]],
+):
     """Fit the data to a double Gaussian."""
 
     def __init__(self: Self, ty: Literal["Fast", "Slow"]) -> None:
@@ -412,19 +417,20 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
         x: np.ndarray[Any, np.dtype[np.float64]],
         *params: *tuple[float, ...],
     ) -> np.ndarray[Any, np.dtype[np.complex128]]:
-        a, b, c, d = params
+        a, b, c, d, e = params
         return (
-            (1 - a - c)
+            (1 - a - c - e)
+            + e
             + a * np.exp(-1 * np.square(x / b) / 2)
             + c * np.exp(-1 * np.square(x / d) / 2)
-            - 1000 * max(a + c - 1, 0)
+            - 1000 * max(a + c + e - 1, 0)
         ).astype(np.complex128)
 
     def _fit_param_initial_guess(
         self: Self,
         data: ValueList[_BT0],
         **info: Unpack[FitInfo],
-    ) -> tuple[float, float, float, float]:
+    ) -> tuple[float, float, float, float, float]:
         free_time = get_free_particle_time(**info)
         min_height = 0.8 * np.min(np.abs(data["data"]))
         initial_height = np.abs(data["data"][np.argmin(np.abs(data["basis"].times))])
@@ -435,37 +441,45 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
             0.5 * free_time,
             decay_height - min_height,
             1.2 * free_time,
+            initial_height,
         )
 
     @staticmethod
     def _params_from_fit(
-        fit: tuple[GaussianParameters, GaussianParameters],
-    ) -> tuple[float, float, float, float]:
-        return (fit[0].amplitude, fit[0].width, fit[1].amplitude, fit[1].width)
+        fit: tuple[GaussianParameters, GaussianParameters, FitOffset],
+    ) -> tuple[float, float, float, float, float]:
+        return (
+            fit[0].amplitude,
+            fit[0].width,
+            fit[1].amplitude,
+            fit[1].width,
+            fit[2].offset,
+        )
 
     @staticmethod
     def _fit_from_params(
         *params: *tuple[float, ...],
-    ) -> tuple[GaussianParameters, GaussianParameters]:
+    ) -> tuple[GaussianParameters, GaussianParameters, FitOffset]:
         return (
             GaussianParameters(params[0], np.abs(params[1])),
             GaussianParameters(params[2], np.abs(params[3])),
+            FitOffset(params[4]),
         )
 
     @staticmethod
     def _scale_params(
         dt: float,
         params: tuple[float, ...],
-    ) -> tuple[float, float, float, float]:
-        return (params[0], dt * params[1], params[2], dt * params[3])
+    ) -> tuple[float, float, float, float, float]:
+        return (params[0], dt * params[1], params[2], dt * params[3], params[4])
 
     @staticmethod
     def _fit_param_bounds() -> tuple[list[float], list[float]]:
-        return ([0, 0, 0, 0], [1, np.inf, 1, np.inf])
+        return ([0, 0, 0, 0, 0], [1, np.inf, 1, np.inf, 1])
 
     def get_rate_from_fit(
         self: Self,
-        fit: tuple[GaussianParameters, GaussianParameters],
+        fit: tuple[GaussianParameters, GaussianParameters, FitOffset],
     ) -> float:
         return (
             max(1 / fit[0].width, 1 / fit[1].width)
@@ -481,6 +495,66 @@ class DoubleGaussianMethod(FitMethod[tuple[GaussianParameters, GaussianParameter
         **info: Unpack[FitInfo],
     ) -> EvenlySpacedTimeBasis[Any, Any, Any]:
         return EvenlySpacedTimeBasis(100, 1, 0, 4 * get_free_particle_time(**info))
+
+
+def get_filtered_isf(data: ValueList[_BT0]) -> ValueList[_BT0]:
+    offset = cast(int, data["basis"].offset)  # type: ignore we should transform to evenly spaced first...
+
+    rolled = np.fft.fftshift(np.fft.fft(np.roll(data["data"], offset)))
+    max_h = 0.9 * np.max(np.abs(rolled))
+    min_h = 0.1
+    peaks, _ = scipy.signal.find_peaks(  # type:ignore lib
+        np.abs(rolled),
+        height=(min_h, max_h),
+    )
+
+    prom = cast(
+        tuple[
+            np.ndarray[Any, np.dtype[np.float64]],
+            np.ndarray[Any, np.dtype[np.int64]],
+            np.ndarray[Any, np.dtype[np.int64]],
+        ],
+        scipy.signal.peak_prominences(np.abs(rolled), peaks),  # type:ignore lib
+    )
+
+    idx = np.arange(rolled.size)
+    for i in np.argsort(prom[0])[::-1][:2]:
+        foot_height = np.max(np.abs([rolled[prom[1][i]], rolled[prom[2][i]]]))
+        arg = np.argwhere(
+            np.logical_and(
+                np.logical_and(idx > prom[1][i], idx < prom[2][i]),
+                np.abs(rolled) > foot_height,
+            ),
+        )
+
+        rolled[arg] = foot_height * np.exp(1j * 2 * np.pi * np.angle(rolled[arg]))
+    return {
+        "basis": data["basis"],
+        "data": np.roll(np.fft.ifft(np.fft.ifftshift(rolled)), -offset),
+    }
+
+
+class FilteredDoubleGaussianMethod(DoubleGaussianMethod):
+    """A filtered version of the double gaussian method."""
+
+    def get_rate_label(self: Self) -> str:
+        return (
+            "Fast Filtered Gaussian" if self._ty == "Fast" else "Slow Filtered Gaussian"
+        )
+
+    def get_fit_from_isf(
+        self: Self,
+        data: ValueList[_BT0],
+        **info: Unpack[FitInfo],
+    ) -> tuple[GaussianParameters, GaussianParameters, FitOffset]:
+        filtered = get_filtered_isf(data)
+        return super().get_fit_from_isf(filtered, **info)
+
+    def get_fit_times(
+        self: Self,
+        **info: Unpack[FitInfo],
+    ) -> EvenlySpacedTimeBasis[Any, Any, Any]:
+        return EvenlySpacedTimeBasis(101, 1, -50, 8 * get_free_particle_time(**info))
 
 
 @dataclass
@@ -553,7 +627,7 @@ class ExponentialMethod(FitMethod[ExponentialParameters]):
 
 
 class GaussianPlusExponentialMethod(
-    FitMethod[tuple[GaussianParameters, ExponentialParameters]],
+    FitMethod[tuple[GaussianParameters, ExponentialParameters, FitOffset]],
 ):
     """Fit the data to a gaussian plus an exponential."""
 
@@ -577,17 +651,18 @@ class GaussianPlusExponentialMethod(
 
     @staticmethod
     def _params_from_fit(
-        fit: tuple[GaussianParameters, ExponentialParameters],
+        fit: tuple[GaussianParameters, ExponentialParameters, FitOffset],
     ) -> tuple[float, float, float, float]:
         return (fit[0].amplitude, fit[0].width, fit[1].amplitude, fit[1].time_constant)
 
     @staticmethod
     def _fit_from_params(
         *params: *tuple[float, ...],
-    ) -> tuple[GaussianParameters, ExponentialParameters]:
+    ) -> tuple[GaussianParameters, ExponentialParameters, FitOffset]:
         return (
             GaussianParameters(params[0], np.abs(params[1])),
             ExponentialParameters(params[2], params[3]),
+            FitOffset(0),
         )
 
     @staticmethod
@@ -611,7 +686,7 @@ class GaussianPlusExponentialMethod(
 
     def get_rate_from_fit(
         self: Self,
-        fit: tuple[GaussianParameters, ExponentialParameters],
+        fit: tuple[GaussianParameters, ExponentialParameters, FitOffset],
     ) -> float:
         return 1 / fit[0].width if self._ty == "Gaussian" else 1 / fit[1].time_constant
 

@@ -57,7 +57,11 @@ from surface_potential_analysis.wavepacket.plot import (
 )
 from surface_potential_analysis.wavepacket.wavepacket import get_wavepacket_at_band
 
-from coherent_rates.fit import GaussianMethod, get_default_isf_times
+from coherent_rates.fit import (
+    GaussianMethod,
+    get_default_isf_times,
+    get_filtered_isf,
+)
 from coherent_rates.isf import (
     SimulationCondition,
     get_analytical_isf,
@@ -337,13 +341,13 @@ def plot_isf_with_fit(
     config: PeriodicSystemConfig,
 ) -> tuple[Figure, Axes]:
     fig, ax = get_figure(None)
+
     fig, ax, line = plot_value_list_against_time(data, measure="abs", ax=ax)
     line.set_label("ISF (abs)")
     fig, ax, line = plot_value_list_against_time(data, measure="real", ax=ax)
     line.set_label("ISF (real)")
     _, _, line = plot_value_list_against_time(data, measure="imag", ax=ax)
     line.set_label("ISF (imag)")
-    fig.show()
 
     fit = method.get_fit_from_isf(
         data,
@@ -358,6 +362,7 @@ def plot_isf_with_fit(
     line.set_label("Fit (imag)")
 
     ax.legend()  # type: ignore bad types
+
     return (fig, ax)
 
 
@@ -410,6 +415,13 @@ def plot_transformed_isf_for_conditions(
         line.set_label("imag ISF")
         fig, ax, line = plot_value_list_against_frequency(isf, measure="real", ax=ax)
         line.set_label("real ISF")
+
+        fig, ax, line = plot_value_list_against_frequency(
+            get_filtered_isf(isf),
+            measure="real",
+            ax=ax,
+        )
+        line.set_label("real ISF (filtered)")
         ax.legend()  # type: ignore library type
         ax.set_title(f"Plot of the fourier transform of the ISF ({label})")  # type: ignore library type
         fig.show()
