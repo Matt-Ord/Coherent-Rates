@@ -59,7 +59,7 @@ def get_coherent_state(
     # stores distance from x0
     distance = np.linalg.norm(
         [d["data"] / s for d, s in zip(displacements, sigma_0)],
-        axis=1,
+        axis=0,
     )
 
     # i k.(x - x')
