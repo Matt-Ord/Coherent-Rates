@@ -430,14 +430,13 @@ def plot_boltzmann_isf(
     input()
 
 
-def plot_free_isf(
+def plot_free_isf_comparison(
     system: System,
     config: PeriodicSystemConfig,
     times: EvenlySpacedTimeBasis[Any, Any, Any] | None = None,
     *,
     n_repeats: int = 10,
 ) -> None:
-    system = FreeSystem(system)
     times = (
         get_default_isf_times(system=system, config=config) if times is None else times
     )
@@ -451,7 +450,7 @@ def plot_free_isf(
 
     measures = list[Measure](["real", "imag", "abs"])
     for measure in measures:
-        fig, ax, line = plot_value_list_against_time(isf)
+        fig, ax, line = plot_value_list_against_time(isf, measure=measure)
         line.set_label("Simulated")
         fig, ax, line = plot_value_list_against_time(
             analytical_isf,
@@ -463,8 +462,6 @@ def plot_free_isf(
         ax.set_title(f"Free ISF ({measure})")  # type: ignore library type
         ax.legend()  # type: ignore library type
         fig.show()
-
-    input()
 
 
 def plot_band_resolved_boltzmann_isf(
@@ -485,10 +482,13 @@ def plot_band_resolved_boltzmann_isf(
         times,
         n_repeats=n_repeats,
     )
-    fig, _ = plot_split_value_list_against_time(resolved_data, measure="real")
-    fig, _ = plot_all_value_list_against_time(resolved_data, measure="real")
-
+    fig, ax = plot_split_value_list_against_time(resolved_data, measure="real")
+    ax.set_ylim(0, 1)
     fig.show()
+
+    fig, _ = plot_all_value_list_against_time(resolved_data, measure="real")
+    fig.show()
+
     fig, ax = plot_split_value_list_against_frequency(resolved_data)
     ax.set_title("Plot of the fourier transform of the ISF against time")  # type: ignore library type
     fig.show()

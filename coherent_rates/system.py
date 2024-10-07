@@ -26,7 +26,7 @@ from surface_potential_analysis.basis.stacked_basis import (
     TupleBasisWithLengthLike,
 )
 from surface_potential_analysis.basis.util import (
-    get_displacements_nx,
+    get_displacements_matrix_nx,
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_basis,
@@ -306,7 +306,7 @@ class PeriodicSystem1dDoubleGaussian(PeriodicSystem):
             ),
         )
         data = np.zeros(basis.fundamental_n, dtype=np.complex128)
-        displacements = get_displacements_nx(basis[0])
+        displacements = get_displacements_matrix_nx(basis[0])
         data -= (self.ratio * self.barrier_energy) * np.exp(
             -(displacements[0] ** 2) / (2 * (basis.n / self.sigma_bottom) ** 2),
         )
