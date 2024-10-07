@@ -9,8 +9,8 @@ from coherent_rates.fit import (
     GaussianMethod,
 )
 from coherent_rates.plot import (
+    plot_isf_fit_for_directions,
     plot_rate_against_momentum,
-    plot_rate_against_momentum_isf_fit,
 )
 from coherent_rates.solve import get_hamiltonian
 from coherent_rates.system import (
@@ -36,6 +36,7 @@ def _compare_rate_against_free_surface(
 
     fig, ax = get_figure(None)
 
+    get_hamiltonian.load_or_call_cached(system, config)
     _, _, line = plot_rate_against_momentum(
         system,
         config,
@@ -70,20 +71,19 @@ if __name__ == "__main__":
         temperature=100,
     )
     system = SODIUM_COPPER_SYSTEM_2D
-    system = FreeSystem(system)
     directions = [(i, 0) for i in [1, 2, *list(range(5, 55, 5))]]
 
     get_hamiltonian.load_or_call_cached(system, config)
-    plot_rate_against_momentum_isf_fit(
+    plot_isf_fit_for_directions(
         system,
         config,
         directions=directions,
-        fit_method=GaussianMethod(truncate=False),
+        fit_method=GaussianMethod(),
     )
     _compare_rate_against_free_surface(
         system,
         config,
         directions=directions,
-        fit_method=GaussianMethod(truncate=False),
-        free_fit_method=GaussianMethod(truncate=False),
+        fit_method=GaussianMethod(),
+        free_fit_method=GaussianMethod(),
     )
