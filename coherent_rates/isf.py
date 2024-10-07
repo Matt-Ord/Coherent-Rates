@@ -357,7 +357,7 @@ def get_coherent_isf(
     times: _BT0,
     *,
     n_repeats: int = 10,
-    sigma_0: float | None = None,
+    sigma_0: tuple[float, ...] | None = None,
 ) -> StatisticalValueList[_BT0]:
     """Get the isf with n_repeats coherent wavepackets.
 
@@ -378,7 +378,8 @@ def get_coherent_isf(
     StatisticalValueList[_BT0]
 
     """
-    sigma_0 = system.lattice_constant / 10 if sigma_0 is None else sigma_0
+    if sigma_0 is None:
+        sigma_0 = tuple(system.lattice_constant / 10 for _ in config.resolution)
     hamiltonian = get_hamiltonian(system, config)
     operator = get_instrument_biased_periodic_x(
         hamiltonian,

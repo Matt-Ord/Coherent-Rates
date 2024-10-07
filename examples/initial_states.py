@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     sigma = system.lattice_constant / 10
 
-    coherent_state = get_random_coherent_state(system, config, sigma)
+    coherent_state = get_random_coherent_state(system, config, (sigma, sigma))
     fig, ax, line = plot_state_2d_x(coherent_state)
     ax.set_title("Coherent state in real space")  # type: ignore unknown
     fig.show()

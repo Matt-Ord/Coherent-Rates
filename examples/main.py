@@ -4,7 +4,7 @@ from coherent_rates.config import PeriodicSystemConfig
 from coherent_rates.plot import (
     plot_band_resolved_boltzmann_isf,
     plot_boltzmann_isf,
-    plot_free_isf,
+    plot_free_isf_comparison,
     plot_pair_system_evolution_1d,
     plot_system_bands,
     plot_system_eigenstates_1d,
@@ -24,6 +24,6 @@ if __name__ == "__main__":
     plot_system_eigenvalues(system, config)
     plot_system_bands(system, config)
     plot_pair_system_evolution_1d(system, config, times)
-    plot_free_isf(system, config, times)
+    plot_free_isf_comparison(system, config, times)
     plot_boltzmann_isf(system, config, times)
     plot_band_resolved_boltzmann_isf(system, config, times, n_repeats=100)

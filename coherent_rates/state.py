@@ -9,6 +9,7 @@ from scipy.constants import (  # type: ignore bad types
 )
 from surface_potential_analysis.basis.util import (
     BasisUtil,
+    get_displacements_x_stacked,
 )
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_position_basis,
@@ -47,37 +48,27 @@ if TYPE_CHECKING:
 
 def get_coherent_state(
     basis: _SBV0,
-    x_0: tuple[int, ...],
-    k_0: tuple[int, ...],
-    sigma_0: float,
+    x_0: tuple[float, ...],
+    k_0: tuple[float, ...],
+    sigma_0: tuple[float, ...],
 ) -> StateVector[_SBV0]:
     basis_x = stacked_basis_as_fundamental_position_basis(basis)
 
-    util = BasisUtil(basis_x)
-    dx_stacked = util.dx_stacked
+    displacements = get_displacements_x_stacked(basis, x_0)
 
-    idx = util.get_flat_index(x_0)
-
-    # nx[i,j] stores the ith component displacement jth point from x0
-    nx = tuple(
-        (n_x_points[idx] - n_x_points[:] + n // 2) % n - (n // 2)
-        for (n_x_points, n) in zip(
-            util.fundamental_stacked_nx_points,
-            util.fundamental_shape,
-            strict=True,
-        )
-    )
     # stores distance from x0
-    distance = np.linalg.norm(np.einsum("ji,jk->ik", nx, dx_stacked), axis=1)  # type: ignore unknown
+    distance = np.linalg.norm(
+        [d["data"] / s for d, s in zip(displacements, sigma_0)],
+        axis=1,
+    )
 
     # i k.(x - x')
-    dk = tuple(n / f for (n, f) in zip(k_0, basis_x.shape))
     phi = (2 * np.pi) * np.einsum(  # type: ignore unknown lib type
         "ij,i->j",
-        nx,
-        dk,
+        [d["data"] for d in displacements],
+        k_0,
     )
-    data = np.exp(-1j * phi - np.square(distance / sigma_0) / 2)
+    data = np.exp(-1j * phi - np.square(distance) / 2)
     norm = np.sqrt(np.sum(np.square(np.abs(data))))
 
     return convert_state_vector_to_basis({"basis": basis_x, "data": data / norm}, basis)
@@ -116,7 +107,7 @@ def get_thermal_occupation_k(
 def get_random_coherent_coordinates(
     system: System,
     config: PeriodicSystemConfig,
-) -> tuple[tuple[int, ...], tuple[int, ...]]:
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
     basis = stacked_basis_as_fundamental_position_basis(
         system.get_potential_basis(config.shape, config.resolution),
     )
@@ -127,19 +118,21 @@ def get_random_coherent_coordinates(
     # position probabilities
     x_probability_normalized = get_thermal_occupation_x(system, config)
     x_index = rng.choice(util.nx_points, p=x_probability_normalized)
-    x0 = cast(tuple[int, ...], util.get_stacked_index(x_index))
+    nx0 = cast(tuple[int, ...], util.get_stacked_index(x_index))
+    x0 = np.einsum("ji,j->i", util.dx_stacked, nx0)  # type: ignore lib
 
     # momentum probabilities
     k_probability_normalized = get_thermal_occupation_k(system, config)
     k_index = rng.choice(util.nx_points, p=k_probability_normalized)
-    k0 = cast(tuple[int, ...], util.get_stacked_index(k_index))
+    nk0 = cast(tuple[int, ...], util.get_stacked_index(k_index))
+    k0 = np.einsum("ji,j->i", util.dk_stacked, nk0)  # type: ignore lib
     return (x0, k0)
 
 
 def get_random_coherent_state(
     system: System,
     config: PeriodicSystemConfig,
-    sigma_0: float,
+    sigma_0: tuple[float, ...],
 ) -> StateVector[
     TupleBasisWithLengthLike[*tuple[FundamentalPositionBasis[Any, Any], ...]]
 ]:
