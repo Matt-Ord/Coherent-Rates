@@ -9,8 +9,8 @@ from scipy.constants import (  # type: ignore bad types
 )
 from surface_potential_analysis.basis.util import (
     BasisUtil,
-    get_displacements_x_stacked,
 )
+from surface_potential_analysis.operator.build import get_displacements_x_stacked
 from surface_potential_analysis.potential.conversion import (
     convert_potential_to_position_basis,
     get_continuous_potential,
