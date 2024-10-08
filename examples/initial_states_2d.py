@@ -1,10 +1,4 @@
 from surface_potential_analysis.basis.time_basis_like import EvenlySpacedTimeBasis
-from surface_potential_analysis.potential.conversion import (
-    convert_potential_to_position_basis,
-)
-from surface_potential_analysis.stacked_basis.conversion import (
-    stacked_basis_as_fundamental_momentum_basis,
-)
 from surface_potential_analysis.state_vector.plot import (
     plot_state_2d_k,
     plot_state_2d_x,
@@ -48,20 +42,23 @@ if __name__ == "__main__":
 
     plot_system_evolution_2d(system, config, coherent_state, times)
 
-    potential = convert_potential_to_position_basis(
-        system.get_potential(config.shape, config.resolution),
-    )
-    basis = potential["basis"]
-    k_basis = stacked_basis_as_fundamental_momentum_basis(basis)
-
+    # Check the x, p distribution used in the coherent states
     x_probability_normalized = get_thermal_occupation_x(system, config)
 
-    fig, ax, line = plot_data_2d_x(basis, x_probability_normalized)
+    fig, ax, line = plot_data_2d_x(
+        x_probability_normalized["basis"],
+        x_probability_normalized["data"],
+    )
     ax.set_title("probability distribution of initial position")  # type: ignore unknown
     fig.show()
 
     k_probability_normalized = get_thermal_occupation_k(system, config)
-    fig, ax, line = plot_data_2d_k(k_basis, k_probability_normalized)
+    fig, ax, line = plot_data_2d_k(
+        k_probability_normalized["basis"],
+        k_probability_normalized["data"].reshape(
+            k_probability_normalized["basis"].shape,
+        ),
+    )
     ax.set_title("probability distribution of initial momentum")  # type: ignore unknown
     fig.show()
     input()
