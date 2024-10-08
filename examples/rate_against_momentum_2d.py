@@ -9,7 +9,7 @@ from coherent_rates.fit import (
     GaussianMethod,
 )
 from coherent_rates.plot import (
-    plot_isf_fit_for_directions,
+    plot_boltzmann_isf_fit_for_directions,
     plot_rate_against_momentum,
 )
 from coherent_rates.solve import get_hamiltonian
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     directions = [(i, 0) for i in [1, 2, *list(range(5, 55, 5))]]
 
     get_hamiltonian.load_or_call_cached(system, config)
-    plot_isf_fit_for_directions(
+    plot_boltzmann_isf_fit_for_directions(
         system,
         config,
         directions=directions,
