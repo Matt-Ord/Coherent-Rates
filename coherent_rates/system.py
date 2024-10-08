@@ -25,7 +25,7 @@ from surface_potential_analysis.basis.stacked_basis import (
     TupleBasis,
     TupleBasisWithLengthLike,
 )
-from surface_potential_analysis.basis.util import (
+from surface_potential_analysis.operator.build import (
     get_displacements_matrix_nx,
 )
 from surface_potential_analysis.potential.conversion import (

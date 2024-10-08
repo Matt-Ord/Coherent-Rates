@@ -67,6 +67,7 @@ from coherent_rates.isf import (
     get_analytical_isf,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
+    get_coherent_isf,
     get_conditions_at_directions,
     get_conditions_at_mass,
     get_conditions_at_temperatures,
@@ -366,7 +367,7 @@ def plot_isf_with_fit(
     return (fig, ax)
 
 
-def plot_isf_fit_for_conditions(
+def plot_boltzmann_isf_fit_for_conditions(
     conditions: list[SimulationCondition],
     *,
     fit_method: FitMethod[Any] | None = None,
@@ -383,20 +384,50 @@ def plot_isf_fit_for_conditions(
         fig.show()
 
 
-def plot_isf_fit_for_directions(
+def plot_boltzmann_isf_fit_for_directions(
     system: System,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
     directions: list[tuple[int, ...]],
 ) -> None:
-    plot_isf_fit_for_conditions(
+    plot_boltzmann_isf_fit_for_conditions(
         get_conditions_at_directions(system, config, directions),
         fit_method=fit_method,
     )
 
 
-def plot_transformed_isf_for_conditions(
+def plot_coherent_isf_fit_for_conditions(
+    conditions: list[SimulationCondition],
+    *,
+    fit_method: FitMethod[Any] | None = None,
+) -> None:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    for system, config, label in conditions:
+        isf = get_coherent_isf(
+            system,
+            config,
+            fit_method.get_fit_times(system=system, config=config),
+        )
+        fig, ax = plot_isf_with_fit(isf, fit_method, system=system, config=config)
+        ax.set_title(f"ISF with fit for {label}")  # type: ignore unknown
+        fig.show()
+
+
+def plot_coherent_isf_fit_for_directions(
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    directions: list[tuple[int, ...]],
+) -> None:
+    plot_coherent_isf_fit_for_conditions(
+        get_conditions_at_directions(system, config, directions),
+        fit_method=fit_method,
+    )
+
+
+def plot_transformed_boltzmann_isf_for_conditions(
     conditions: list[SimulationCondition],
     *,
     fit_method: FitMethod[Any] | None = None,
@@ -429,14 +460,14 @@ def plot_transformed_isf_for_conditions(
     input()
 
 
-def plot_transformed_isf_for_directions(
+def plot_transformed_boltzmann_isf_for_directions(
     system: System,
     config: PeriodicSystemConfig,
     *,
     fit_method: FitMethod[Any] | None = None,
     directions: list[tuple[int, ...]],
 ) -> None:
-    plot_transformed_isf_for_conditions(
+    plot_transformed_boltzmann_isf_for_conditions(
         get_conditions_at_directions(system, config, directions),
         fit_method=fit_method,
     )

@@ -11,7 +11,7 @@ from coherent_rates.isf import (
     get_conditions_at_energy_range,
 )
 from coherent_rates.plot import (
-    plot_isf_fit_for_conditions,
+    plot_boltzmann_isf_fit_for_conditions,
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
@@ -32,7 +32,7 @@ def _test_instrument_bias(
         config,
         energies,
     )
-    plot_isf_fit_for_conditions(conditions, fit_method=fit_method)
+    plot_boltzmann_isf_fit_for_conditions(conditions, fit_method=fit_method)
 
 
 if __name__ == "__main__":
