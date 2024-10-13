@@ -258,7 +258,6 @@ def plot_system_evolution_1d(
     fig, ax, _anim = animate_state_over_list_1d_x(states, ax=ax1)
 
     fig.show()
-    input()
 
 
 def plot_system_evolution_2d(

@@ -10,13 +10,11 @@ from coherent_rates.isf import (
 )
 from coherent_rates.system import (
     SODIUM_COPPER_SYSTEM_1D,
-    FreeSystem,
 )
 
 if __name__ == "__main__":
     config = PeriodicSystemConfig((20,), (50,), temperature=155, direction=(2,))
-    system = SODIUM_COPPER_SYSTEM_1D
-    system = FreeSystem(system)
+    system = SODIUM_COPPER_SYSTEM_1D.with_barrier_energy(0)
     times = EvenlySpacedTimeBasis(151, 1, -75, 5e-11)
 
     # Plot the ISF for a set of random coherent states

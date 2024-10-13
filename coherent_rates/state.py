@@ -68,12 +68,12 @@ def get_coherent_state(
     )
 
     # i k.(x - x')
-    phi = (2 * np.pi) * np.einsum(  # type: ignore unknown lib type
+    phi = np.einsum(  # type: ignore unknown lib type
         "ij,i->j",
         [d["data"] for d in displacements],
         k_0,
     )
-    data = np.exp(-1j * phi - np.square(distance) / 2)
+    data = np.exp(1j * phi - np.square(distance) / 2)
     norm = np.sqrt(np.sum(np.square(np.abs(data))))
 
     return convert_state_vector_to_basis({"basis": basis_x, "data": data / norm}, basis)
@@ -211,12 +211,12 @@ def get_random_coherent_k(
     util = BasisUtil(basis)
 
     while True:
-        x0 = tuple[float, ...](
+        k0 = tuple[float, ...](
             np.einsum("i,ik->k", (0.5 - rng.random(basis.ndim)), util.delta_k_stacked),  # type: ignore lib
         )
-        if rng.random() > get_thermal_probability_k(system, config, x0):
+        if rng.random() > get_thermal_probability_k(system, config, k0):
             continue
-        return x0
+        return k0
 
 
 def get_random_coherent_coordinates(

@@ -226,7 +226,9 @@ def _get_boltzmann_isf_data_path(
     *,
     n_repeats: int = 10,
 ) -> Path:
-    return Path(f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.isf")
+    return Path(
+        f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.boltzmann.isf",
+    )
 
 
 @cached(_get_boltzmann_isf_data_path)
@@ -351,6 +353,17 @@ def get_band_resolved_boltzmann_isf(
     }
 
 
+def _get_coherent_isf_data_path(
+    system: System,
+    config: PeriodicSystemConfig,
+    times: Any,  # noqa: ANN401
+    *,
+    n_repeats: int = 10,
+) -> Path:
+    return Path(f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.coherent.isf")
+
+
+@cached(_get_coherent_isf_data_path)
 def get_coherent_isf(
     system: System,
     config: PeriodicSystemConfig,
