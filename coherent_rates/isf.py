@@ -183,72 +183,6 @@ def get_isf(
     return _get_isf_from_hamiltonian(hamiltonian, operator, initial_state, times)
 
 
-def _get_boltzmann_isf_from_hamiltonian(
-    hamiltonian: SingleBasisDiagonalOperator[_ESB0],
-    config: PeriodicSystemConfig,
-    times: _BT0,
-    *,
-    n_repeats: int = 1,
-) -> StatisticalValueList[_BT0]:
-    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
-    # Convert the operator to the hamiltonian basis
-    # to prevent conversion in each repeat
-    operator = get_instrument_biased_periodic_x(
-        hamiltonian,
-        direction=config.direction,
-        energy_range=config.scattered_energy_range,
-    )
-
-    def _calculate_isf(i: int) -> None:
-        state = get_random_boltzmann_state_from_hamiltonian(
-            hamiltonian,
-            config.temperature,
-        )
-        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
-        isf_data[i, :] = data["data"]
-
-    for i in range(n_repeats):
-        _calculate_isf(i)
-
-    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
-    sd = np.std(isf_data, axis=0, dtype=np.complex128)
-    return {
-        "data": mean,
-        "basis": times,
-        "standard_deviation": sd,
-    }
-
-
-def _get_boltzmann_isf_data_path(
-    system: System,
-    config: PeriodicSystemConfig,
-    times: Any,  # noqa: ANN401
-    *,
-    n_repeats: int = 10,
-) -> Path:
-    return Path(
-        f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.boltzmann.isf",
-    )
-
-
-@cached(_get_boltzmann_isf_data_path)
-@timed
-def get_boltzmann_isf(
-    system: System,
-    config: PeriodicSystemConfig,
-    times: _BT0,
-    *,
-    n_repeats: int = 10,
-) -> StatisticalValueList[_BT0]:
-    hamiltonian = get_hamiltonian(system, config)
-    return _get_boltzmann_isf_from_hamiltonian(
-        hamiltonian,
-        config,
-        times,
-        n_repeats=n_repeats,
-    )
-
-
 def get_analytical_isf(
     system: System,
     config: PeriodicSystemConfig,
@@ -353,6 +287,49 @@ def get_band_resolved_boltzmann_isf(
     }
 
 
+def _get_coherent_isf_from_hamiltonian(  # noqa: PLR0913
+    hamiltonian: SingleBasisDiagonalOperator[_ESB0],
+    system: System,
+    config: PeriodicSystemConfig,
+    times: _BT0,
+    *,
+    n_repeats: int = 1,
+    sigma_0: tuple[float, ...] | None = None,
+) -> StatisticalValueList[_BT0]:
+    if sigma_0 is None:
+        sigma_0 = tuple(system.lattice_constant / 10 for _ in config.resolution)
+
+    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
+    # Convert the operator to the hamiltonian basis
+    # to prevent conversion in each repeat
+    operator = get_instrument_biased_periodic_x(
+        hamiltonian,
+        direction=config.direction,
+        energy_range=config.scattered_energy_range,
+    )
+
+    isf_data = np.zeros((2 * n_repeats, times.n), dtype=np.complex128)
+
+    def _calculate_isf(i: int) -> None:
+        x0, k0 = get_random_coherent_coordinates(system, config)
+
+        state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data[i, :] = data["data"]
+
+        k0 = tuple([-j for j in k0])
+        state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data[i + n_repeats, :] = data["data"]
+
+    for i in range(n_repeats):
+        _calculate_isf(i)
+
+    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+    sd = np.std(isf_data, axis=0, dtype=np.complex128)
+    return {"data": mean, "basis": times, "standard_deviation": sd}
+
+
 def _get_coherent_isf_data_path(
     system: System,
     config: PeriodicSystemConfig,
@@ -391,39 +368,106 @@ def get_coherent_isf(
     StatisticalValueList[_BT0]
 
     """
-    if sigma_0 is None:
-        sigma_0 = tuple(system.lattice_constant / 10 for _ in config.resolution)
     hamiltonian = get_hamiltonian(system, config)
-    operator = get_instrument_biased_periodic_x(
+
+    return _get_coherent_isf_from_hamiltonian(
         hamiltonian,
-        direction=config.direction,
-        energy_range=config.scattered_energy_range,
+        system,
+        config,
+        times,
+        n_repeats=n_repeats,
+        sigma_0=sigma_0,
     )
 
-    isf_data = np.zeros((2 * n_repeats, times.n), dtype=np.complex128)
 
-    def _calculate_isf(i: int) -> None:
-        x0, k0 = get_random_coherent_coordinates(system, config)
+def _get_coherent_rate_against_momentum_data_path(  # noqa: PLR0913
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
+    n_repeats: int = 10,
+    sigma_0: tuple[float, ...] | None = None,
+) -> Path:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    directions = _get_default_directions(config) if directions is None else directions
+    return Path(
+        f"data/{hash((system, config))}.{hash(fit_method)}"
+        f".{hash((directions[0], directions[-1], len(directions)))}"
+        f".{hash((n_repeats, sigma_0))}"
+        ".coherent.rates",
+    )
 
-        state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
-        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
-        isf_data[i, :] = data["data"]
 
-        k0 = tuple([-j for j in k0])
-        state = get_coherent_state(hamiltonian["basis"][1], x0, k0, sigma_0)
-        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
-        isf_data[i + n_repeats, :] = data["data"]
+def get_coherent_rate(
+    system: System,
+    config: PeriodicSystemConfig,
+    fit_method: FitMethod[Any],
+    *,
+    n_repeats: int = 10,
+) -> float:
+    times = fit_method.get_fit_times(system=system, config=config)
+    isf = get_coherent_isf(system, config, times, n_repeats=n_repeats)
+    return fit_method.get_rate_from_isf(
+        isf,
+        system=system,
+        config=config,
+    )
 
-    for i in range(n_repeats):
-        _calculate_isf(i)
 
-    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
-    sd = np.std(isf_data, axis=0, dtype=np.complex128)
-    return {
-        "data": mean,
-        "basis": times,
-        "standard_deviation": sd,
-    }
+def _get_coherent_rate_from_hamiltonian(  # noqa: PLR0913
+    hamiltonian: SingleBasisDiagonalOperator[_ESB0],
+    system: System,
+    config: PeriodicSystemConfig,
+    fit_method: FitMethod[Any],
+    *,
+    n_repeats: int = 10,
+    sigma_0: tuple[float, ...] | None = None,
+) -> float:
+    times = fit_method.get_fit_times(system=system, config=config)
+    isf = _get_coherent_isf_from_hamiltonian(
+        hamiltonian,
+        system,
+        config,
+        times,
+        n_repeats=n_repeats,
+        sigma_0=sigma_0,
+    )
+
+    return fit_method.get_rate_from_isf(
+        isf,
+        system=system,
+        config=config,
+    )
+
+
+@cached(_get_coherent_rate_against_momentum_data_path)
+def get_coherent_rate_against_momentum_data(  # noqa: PLR0913
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
+    n_repeats: int = 10,
+    sigma_0: tuple[float, ...] | None = None,
+) -> ValueList[MomentumBasis]:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    directions = _get_default_directions(config) if directions is None else directions
+
+    rates = np.zeros(len(directions), dtype=np.complex128)
+    hamiltonian = get_hamiltonian(system, config)
+    for i, direction in enumerate(directions):
+        rates[i] = _get_coherent_rate_from_hamiltonian(
+            hamiltonian,
+            system=system,
+            config=config.with_direction(direction),
+            fit_method=fit_method,
+            n_repeats=n_repeats,
+            sigma_0=sigma_0,
+        )
+
+    basis = MomentumBasis(get_scattered_momentum(system, config, directions))
+    return {"data": rates.ravel(), "basis": basis}
 
 
 def get_scattered_momentum(
@@ -447,7 +491,73 @@ def _get_default_directions(config: PeriodicSystemConfig) -> list[tuple[int, ...
     )
 
 
-def _get_rate_against_momentum_data_path(
+def _get_boltzmann_isf_from_hamiltonian(
+    hamiltonian: SingleBasisDiagonalOperator[_ESB0],
+    config: PeriodicSystemConfig,
+    times: _BT0,
+    *,
+    n_repeats: int = 1,
+) -> StatisticalValueList[_BT0]:
+    isf_data = np.zeros((n_repeats, times.n), dtype=np.complex128)
+    # Convert the operator to the hamiltonian basis
+    # to prevent conversion in each repeat
+    operator = get_instrument_biased_periodic_x(
+        hamiltonian,
+        direction=config.direction,
+        energy_range=config.scattered_energy_range,
+    )
+
+    def _calculate_isf(i: int) -> None:
+        state = get_random_boltzmann_state_from_hamiltonian(
+            hamiltonian,
+            config.temperature,
+        )
+        data = _get_isf_from_hamiltonian(hamiltonian, operator, state, times)
+        isf_data[i, :] = data["data"]
+
+    for i in range(n_repeats):
+        _calculate_isf(i)
+
+    mean = np.mean(isf_data, axis=0, dtype=np.complex128)
+    sd = np.std(isf_data, axis=0, dtype=np.complex128)
+    return {
+        "data": mean,
+        "basis": times,
+        "standard_deviation": sd,
+    }
+
+
+def _get_boltzmann_isf_data_path(
+    system: System,
+    config: PeriodicSystemConfig,
+    times: Any,  # noqa: ANN401
+    *,
+    n_repeats: int = 10,
+) -> Path:
+    return Path(
+        f"data/{hash((system, config))}.{hash(times)}.{n_repeats}.boltzmann.isf",
+    )
+
+
+@cached(_get_boltzmann_isf_data_path)
+@timed
+def get_boltzmann_isf(
+    system: System,
+    config: PeriodicSystemConfig,
+    times: _BT0,
+    *,
+    n_repeats: int = 10,
+) -> StatisticalValueList[_BT0]:
+    hamiltonian = get_hamiltonian(system, config)
+    return _get_boltzmann_isf_from_hamiltonian(
+        hamiltonian,
+        config,
+        times,
+        n_repeats=n_repeats,
+    )
+
+
+def _get_boltzmann_rate_against_momentum_data_path(
     system: System,
     config: PeriodicSystemConfig,
     *,
@@ -515,8 +625,8 @@ def _get_boltzmann_rate_from_hamiltonian(
     )
 
 
-@cached(_get_rate_against_momentum_data_path)
-def get_rate_against_momentum_data(
+@cached(_get_boltzmann_rate_against_momentum_data_path)
+def get_boltzmann_rate_against_momentum_data(
     system: System,
     config: PeriodicSystemConfig,
     *,
@@ -538,14 +648,11 @@ def get_rate_against_momentum_data(
         )
 
     basis = MomentumBasis(get_scattered_momentum(system, config, directions))
-    return {
-        "data": rates.ravel(),
-        "basis": basis,
-    }
+    return {"data": rates.ravel(), "basis": basis}
 
 
 @timed
-def get_rate_against_condition_and_momentum_data(
+def get_boltzmann_rate_against_condition_and_momentum_data(
     conditions: list[tuple[System, PeriodicSystemConfig]],
     directions: list[tuple[int, ...]] | None = None,
     *,
@@ -565,7 +672,7 @@ def get_rate_against_condition_and_momentum_data(
 
     rate_data = None
     for j, (system, config) in enumerate(conditions):
-        rate_data = get_rate_against_momentum_data(
+        rate_data = get_boltzmann_rate_against_momentum_data(
             system,
             config,
             fit_method=fit_method,
@@ -636,7 +743,7 @@ def get_linear_fit_effective_mass_data(
     fit_method: FitMethod[Any] | None = None,
     directions: list[tuple[int, ...]] | None = None,
 ) -> float:
-    rate_data = get_rate_against_momentum_data(
+    rate_data = get_boltzmann_rate_against_momentum_data(
         system,
         config,
         fit_method=fit_method,
@@ -743,7 +850,7 @@ def get_effective_mass_against_momentum_data(
     directions: list[tuple[int, ...]] | None = None,
     fit_method: FitMethod[Any] | None = None,
 ) -> ValueList[MomentumBasis]:
-    rates = get_rate_against_momentum_data(
+    rates = get_boltzmann_rate_against_momentum_data(
         system,
         config,
         directions=directions,

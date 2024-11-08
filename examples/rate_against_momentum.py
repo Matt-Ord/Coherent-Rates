@@ -12,7 +12,8 @@ from coherent_rates.fit import (
 )
 from coherent_rates.plot import (
     plot_boltzmann_isf_fit_for_directions,
-    plot_rate_against_momentum,
+    plot_boltzmann_rate_against_momentum,
+    plot_coherent_rate_against_momentum,
 )
 from coherent_rates.system import (
     SODIUM_COPPER_BRIDGE_SYSTEM_1D,
@@ -30,7 +31,7 @@ def _test_convergence_with_shape(
     directions: list[tuple[int, ...]],
     fit_method: FitMethod[Any] | None = None,
 ) -> None:
-    fig, ax, line = plot_rate_against_momentum(
+    fig, ax, line = plot_boltzmann_rate_against_momentum(
         system,
         config,
         directions=directions,
@@ -38,7 +39,7 @@ def _test_convergence_with_shape(
     )
     line.set_label("Standard")
     directions = [tuple(2 * j for j in i) for i in directions]
-    _, _, line = plot_rate_against_momentum(
+    _, _, line = plot_boltzmann_rate_against_momentum(
         system,
         config.with_shape(tuple(2 * j for j in config.shape)),
         directions=directions,
@@ -57,7 +58,7 @@ def _test_convergence_with_resolution(
     directions: list[tuple[int, ...]],
     fit_method: FitMethod[Any] | None = None,
 ) -> None:
-    fig, ax, line = plot_rate_against_momentum(
+    fig, ax, line = plot_boltzmann_rate_against_momentum(
         system,
         config,
         directions=directions,
@@ -65,7 +66,7 @@ def _test_convergence_with_resolution(
     )
     line.set_label("Standard")
 
-    _, _, line = plot_rate_against_momentum(
+    _, _, line = plot_boltzmann_rate_against_momentum(
         system,
         config.with_resolution(tuple(2 * j for j in config.resolution)),
         directions=directions,
@@ -84,7 +85,7 @@ def _test_convergence_with_truncation(
     directions: list[tuple[int, ...]],
     fit_method: FitMethod[Any] | None = None,
 ) -> None:
-    fig, ax, line = plot_rate_against_momentum(
+    fig, ax, line = plot_boltzmann_rate_against_momentum(
         system,
         config,
         directions=directions,
@@ -95,7 +96,7 @@ def _test_convergence_with_truncation(
     config = config.with_resolution(
         tuple(2 * j for j in config.resolution),
     ).with_truncation(2 * config.n_bands)
-    _, _, line = plot_rate_against_momentum(
+    _, _, line = plot_boltzmann_rate_against_momentum(
         system,
         config,
         directions=directions,
@@ -121,7 +122,7 @@ def _compare_rate_against_free_surface(
 
     fig, ax = get_figure(None)
 
-    _, _, line = plot_rate_against_momentum(
+    _, _, line = plot_boltzmann_rate_against_momentum(
         system,
         config,
         fit_method=fit_method,
@@ -130,7 +131,49 @@ def _compare_rate_against_free_surface(
     )
     line.set_label(f"Bound system, {fit_method.get_rate_label()}")
 
-    _, _, line = plot_rate_against_momentum(
+    _, _, line = plot_boltzmann_rate_against_momentum(
+        FreeSystem(system),
+        config,
+        fit_method=free_fit_method,
+        directions=directions,
+        ax=ax,
+    )
+    line.set_label(f"Free system, {fit_method.get_rate_label()}")
+
+    ax.legend()  # type: ignore library type
+    ax.set_title("Plot of rate against delta k, comparing to a free particle")  # type: ignore library type
+
+    fig.show()
+    input()
+
+
+def _compare_rate_against_free_surface_coherent(  # noqa: PLR0913
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    free_fit_method: FitMethod[Any] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
+    n_repeats: int = 10,
+    sigma_0: tuple[float, ...] | None = None,
+) -> None:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    free_fit_method = GaussianMethod() if free_fit_method is None else free_fit_method
+
+    fig, ax = get_figure(None)
+
+    _, _, line = plot_coherent_rate_against_momentum(
+        system,
+        config,
+        fit_method=fit_method,
+        directions=directions,
+        ax=ax,
+        n_repeats=n_repeats,
+        sigma_0=sigma_0,
+    )
+    line.set_label(f"Bound system, {fit_method.get_rate_label()}")
+
+    _, _, line = plot_boltzmann_rate_against_momentum(
         FreeSystem(system),
         config,
         fit_method=free_fit_method,
@@ -167,6 +210,13 @@ if __name__ == "__main__":
         fit_method=GaussianMethodWithOffset(),
     )
     _compare_rate_against_free_surface(
+        system,
+        config,
+        directions=directions,
+        fit_method=GaussianMethodWithOffset(),
+        free_fit_method=GaussianMethodWithOffset(),
+    )
+    _compare_rate_against_free_surface_coherent(
         system,
         config,
         directions=directions,

@@ -67,7 +67,9 @@ from coherent_rates.isf import (
     get_analytical_isf,
     get_band_resolved_boltzmann_isf,
     get_boltzmann_isf,
+    get_boltzmann_rate_against_momentum_data,
     get_coherent_isf,
+    get_coherent_rate_against_momentum_data,
     get_conditions_at_directions,
     get_conditions_at_mass,
     get_conditions_at_temperatures,
@@ -75,7 +77,6 @@ from coherent_rates.isf import (
     get_effective_mass_against_momentum_data,
     get_isf_pair_states,
     get_linear_fit_effective_mass_against_condition_data,
-    get_rate_against_momentum_data,
     get_scattered_energy_change_against_k,
     get_thermal_scattered_energy_change_against_k,
 )
@@ -400,6 +401,7 @@ def plot_coherent_isf_fit_for_conditions(
     conditions: list[SimulationCondition],
     *,
     fit_method: FitMethod[Any] | None = None,
+    n_repeats: int = 10,
 ) -> None:
     fit_method = GaussianMethod() if fit_method is None else fit_method
     for system, config, label in conditions:
@@ -407,6 +409,7 @@ def plot_coherent_isf_fit_for_conditions(
             system,
             config,
             fit_method.get_fit_times(system=system, config=config),
+            n_repeats=n_repeats,
         )
         fig, ax = plot_isf_with_fit(isf, fit_method, system=system, config=config)
         ax.set_title(f"ISF with fit for {label}")  # type: ignore unknown
@@ -419,10 +422,12 @@ def plot_coherent_isf_fit_for_directions(
     *,
     fit_method: FitMethod[Any] | None = None,
     directions: list[tuple[int, ...]],
+    n_repeats: int = 10,
 ) -> None:
     plot_coherent_isf_fit_for_conditions(
         get_conditions_at_directions(system, config, directions),
         fit_method=fit_method,
+        n_repeats=n_repeats,
     )
 
 
@@ -582,7 +587,41 @@ def plot_band_resolved_boltzmann_isf(
     return fig, ax
 
 
-def plot_rate_against_momentum(
+def plot_coherent_rate_against_momentum(  # noqa: PLR0913
+    system: System,
+    config: PeriodicSystemConfig,
+    *,
+    fit_method: FitMethod[Any] | None = None,
+    directions: list[tuple[int, ...]] | None = None,
+    ax: Axes | None = None,
+    n_repeats: int = 10,
+    sigma_0: tuple[float, ...] | None = None,
+) -> tuple[Figure, Axes, Line2D]:
+    fit_method = GaussianMethod() if fit_method is None else fit_method
+    data = get_coherent_rate_against_momentum_data(
+        system,
+        config,
+        fit_method=fit_method,
+        directions=directions,
+        sigma_0=sigma_0,
+        n_repeats=n_repeats,
+    )
+
+    fig, ax, line = plot_value_list_against_momentum(data, ax=ax)
+    line.set_linestyle("")
+    line.set_marker("x")
+
+    ax.set_xlabel(r"$\Delta K$ /$m^{-1}$")  # type: ignore library type
+    ax.set_ylabel("Rate")  # type: ignore library type
+
+    ax.set_ylim(0, ax.get_ylim()[1])
+    ax.set_xlim(0, ax.get_xlim()[1])
+    ax.set_title("Plot of rate against delta k")  # type: ignore library type
+
+    return (fig, ax, line)
+
+
+def plot_boltzmann_rate_against_momentum(
     system: System,
     config: PeriodicSystemConfig,
     *,
@@ -591,7 +630,7 @@ def plot_rate_against_momentum(
     ax: Axes | None = None,
 ) -> tuple[Figure, Axes, Line2D]:
     fit_method = GaussianMethod() if fit_method is None else fit_method
-    data = get_rate_against_momentum_data(
+    data = get_boltzmann_rate_against_momentum_data(
         system,
         config,
         fit_method=fit_method,
@@ -712,7 +751,7 @@ def plot_linear_fit_effective_mass_against_condition(
 
     momentum_plot = get_figure(None)
     for system, config, label in conditions:
-        _, _, line = plot_rate_against_momentum(
+        _, _, line = plot_boltzmann_rate_against_momentum(
             system,
             config,
             directions=directions,
