@@ -96,7 +96,8 @@
 				"streetsidesoftware.code-spell-checker",
 				"tamasfe.even-better-toml",
 				"charliermarsh.ruff",
-				"ms-python.vscode-pylance"
+				"ms-python.vscode-pylance",
+				"GitHub.copilot"
 			]
 		}
 	},
